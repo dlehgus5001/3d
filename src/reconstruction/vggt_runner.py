@@ -55,7 +55,7 @@ def _numpy_tree(value: Any) -> Any:
 
 
 def run_vggt(frame_paths: list[Path], model_cfg: dict[str, Any], source_path: Path,
-             checkpoint: Path) -> dict[str, Any]:
+             checkpoint: Path, query_points: list[list[float]] | None = None) -> dict[str, Any]:
     """Run a local checkout of the official VGGT package without any download fallback."""
     if not checkpoint.is_file():
         raise FileNotFoundError(f"VGGT checkpoint not found: {checkpoint}")
@@ -83,9 +83,15 @@ def run_vggt(frame_paths: list[Path], model_cfg: dict[str, Any], source_path: Pa
     dtype_name = str(model_cfg.get("dtype", "bfloat16"))
     dtype = torch.bfloat16 if dtype_name == "bfloat16" else torch.float16
     autocast_enabled = device.type == "cuda"
+    queries = None
+    if query_points:
+        queries = torch.as_tensor(query_points, dtype=torch.float32, device=device)
+        if queries.ndim != 2 or queries.shape[1] != 2:
+            raise ValueError("inference.query_points must have shape [[x, y], ...]")
     try:
         with torch.no_grad(), torch.autocast(device_type=device.type, dtype=dtype, enabled=autocast_enabled):
-            predictions = model(images[None])
+            # VGGT accepts [S, 3, H, W] and adds its own batch dimension.
+            predictions = model(images, query_points=queries)
         if not isinstance(predictions, dict):
             raise TypeError("VGGT model output is not a prediction dictionary")
         if "pose_enc" in predictions and not ({"extrinsic", "intrinsic"} <= predictions.keys()):

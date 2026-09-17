@@ -24,6 +24,10 @@ def test_extract_frames(tmp_path: Path):
     assert len(records) == 5
     assert records[0]["width"] == 32
     assert json.loads((tmp_path / "frames/metadata.json").read_text())["frames"][0]["source_frame"] == 0
+    # A second run must clean files from the previous, larger selection.
+    config["num_frames"] = 2
+    extract_frames(video, tmp_path / "frames", config)
+    assert len(list((tmp_path / "frames").glob("frame_*.jpg"))) == 2
 
 
 def test_missing_checkpoint_never_downloads(tmp_path: Path):
@@ -46,11 +50,15 @@ def test_export_mock_predictions_is_labeled_as_unit_data(tmp_path: Path):
         "world_points": np.ones((1, 2, 4, 6, 3), np.float32),
         "world_points_conf": np.full((1, 2, 4, 6), 5, np.float32),
         "input_images": np.full((1, 2, 3, 4, 6), 0.5, np.float32),
+        "track": np.zeros((1, 2, 3, 2), np.float32),
+        "vis": np.ones((1, 2, 3), np.float32),
+        "conf": np.ones((1, 2, 3), np.float32),
     }
     output = tmp_path / "unit-output"
     summary = export_results(predictions, frames, output,
                              {"conf_threshold": 3, "max_points": 100, "colmap": True, "save_pointmaps": True})
     assert summary["point_count"] == 48
     for relative in ("pointcloud/pointcloud.ply", "visualization/camera_trajectory.png",
-                     "visualization/depth_preview/depth_000001.png", "colmap/sparse/0/images.txt"):
+                     "visualization/depth_preview/depth_000001.png", "colmap/sparse/0/images.txt",
+                     "tracks/point_tracks.npz"):
         assert (output / relative).is_file()

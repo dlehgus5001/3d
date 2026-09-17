@@ -47,7 +47,7 @@ def main() -> int:
     print("[2/5] Loading local VGGT")
     frame_paths = [output / "frames" / record["file"] for record in records]
     print("[3/5] Running VGGT inference")
-    result = run_vggt(frame_paths, config["model"], source, checkpoint)
+    result = run_vggt(frame_paths, config["model"], source, checkpoint, config["inference"].get("query_points"))
     print("[4/5] Exporting cameras, depth, point maps, point cloud, and COLMAP text model")
     summary = export_results(result, frame_paths, output, {**config["inference"], **config["export"]})
     print("[5/5] Creating visualizations")

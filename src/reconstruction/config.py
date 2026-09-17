@@ -25,7 +25,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "blur_threshold": 80.0,
         "jpeg_quality": 95,
     },
-    "inference": {"query_points": [], "conf_threshold": 3.0},
+    "inference": {"query_points": [], "conf_threshold": 5.0},
     "export": {"save_pointmaps": True, "max_points": 2000000, "colmap": True},
 }
 

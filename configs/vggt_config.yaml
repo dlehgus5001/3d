@@ -17,7 +17,7 @@ frames:
   jpeg_quality: 95
 
 inference:
-  conf_threshold: 3.0
+  conf_threshold: 5.0
   query_points: []
 
 export:

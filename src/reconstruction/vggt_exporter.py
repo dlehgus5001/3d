@@ -130,6 +130,11 @@ def export_results(result: dict[str, Any], frames: list[Path], root: Path, cfg: 
     confidence = None if confidence is None else np.squeeze(_batch(confidence))
     if cfg.get("save_pointmaps", True):
         for i, pointmap in enumerate(points, 1): np.save(root / f"pointmap/pointmap_{i:06d}.npy", pointmap.astype(np.float32))
+    if "track" in result:
+        track_dir = root / "tracks"; track_dir.mkdir(parents=True, exist_ok=True)
+        np.savez_compressed(track_dir / "point_tracks.npz", track=_batch(result["track"]),
+                            visibility=_batch(result.get("vis", np.array([]))),
+                            confidence=_batch(result.get("conf", np.array([]))))
     xyz, rgb = points.reshape(-1, 3), images.reshape(-1, 3)
     conf_flat = None if confidence is None else confidence.reshape(-1)
     selected = _write_ply(root / "pointcloud/pointcloud.ply", xyz, rgb, conf_flat,

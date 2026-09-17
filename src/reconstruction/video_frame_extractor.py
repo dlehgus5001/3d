@@ -29,6 +29,9 @@ def extract_frames(video: Path, output_dir: Path, cfg: dict[str, Any]) -> list[d
     if not video.is_file():
         raise FileNotFoundError(f"Input video not found: {video}")
     output_dir.mkdir(parents=True, exist_ok=True)
+    # A rerun with fewer frames must not leave files that look like current inputs.
+    for stale_frame in output_dir.glob("frame_*.jpg"):
+        stale_frame.unlink()
     capture = cv2.VideoCapture(str(video))
     if not capture.isOpened():
         raise RuntimeError(f"OpenCV could not open video: {video}")
