@@ -1,0 +1,26 @@
+model:
+  # Explicit local paths only. The program never downloads source or weights.
+  source_path: ./third_party/vggt
+  checkpoint: ./models/vggt/model.pt
+  device: cuda
+  allow_cpu_fallback: false
+  dtype: bfloat16
+
+frames:
+  num_frames: 60
+  frame_interval: null
+  start_sec: 0.0
+  end_sec: null
+  resize_max: 1024
+  remove_blur: true
+  blur_threshold: 80.0
+  jpeg_quality: 95
+
+inference:
+  conf_threshold: 3.0
+  query_points: []
+
+export:
+  save_pointmaps: true
+  max_points: 2000000
+  colmap: true

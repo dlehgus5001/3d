@@ -1,0 +1,12 @@
+# Install a CUDA build of torch appropriate for the target driver separately.
+# VGGT's official local source may specify additional pinned dependencies.
+torch>=2.1
+torchvision
+numpy<2.0
+opencv-python-headless
+matplotlib
+PyYAML
+Pillow
+einops
+safetensors
+huggingface-hub
