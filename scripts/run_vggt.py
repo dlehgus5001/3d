@@ -13,7 +13,7 @@ sys.path.insert(0, str(PROJECT_ROOT / "src"))
 from reconstruction.config import load_config, resolve_path
 from reconstruction.vggt_exporter import export_results
 from reconstruction.vggt_runner import run_vggt
-from reconstruction.video_frame_extractor import extract_frames
+from reconstruction.video_frame_extractor import extract_frames, load_extracted_frames
 
 
 def arguments() -> argparse.Namespace:
@@ -25,7 +25,10 @@ def arguments() -> argparse.Namespace:
     group.add_argument("--num-frames", type=int)
     group.add_argument("--frame-interval", type=int)
     parser.add_argument("--checkpoint", type=Path, help="Override local checkpoint path")
+    parser.add_argument("--vggt-source", type=Path, help="Override local official VGGT repository path")
     parser.add_argument("--extract-only", action="store_true", help="Validate/extract video without loading VGGT")
+    parser.add_argument("--reuse-frames", action="store_true",
+                        help="Skip extraction and reuse <output>/frames/metadata.json")
     return parser.parse_args()
 
 
@@ -38,9 +41,15 @@ def main() -> int:
     video = args.video.expanduser().resolve()
     output = (args.output or PROJECT_ROOT / "output/vggt" / video.stem).expanduser().resolve()
     checkpoint = args.checkpoint.resolve() if args.checkpoint else resolve_path(config["model"]["checkpoint"], PROJECT_ROOT)
-    source = resolve_path(config["model"]["source_path"], PROJECT_ROOT)
-    print("[1/5] Extracting and selecting frames")
-    records = extract_frames(video, output / "frames", config["frames"])
+    source = args.vggt_source.expanduser().resolve() if args.vggt_source else resolve_path(config["model"]["source_path"], PROJECT_ROOT)
+    if args.extract_only and args.reuse_frames:
+        raise ValueError("--extract-only and --reuse-frames cannot be used together")
+    if args.reuse_frames:
+        print("[1/5] Reusing previously extracted frames")
+        records = load_extracted_frames(output / "frames")
+    else:
+        print("[1/5] Extracting and selecting frames")
+        records = extract_frames(video, output / "frames", config["frames"])
     if args.extract_only:
         print(f"Extract-only complete: {len(records)} frames at {output / 'frames'}")
         return 0

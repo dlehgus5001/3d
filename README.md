@@ -39,6 +39,21 @@ staging PC에서 공식 VGGT repository와 checkpoint를 준비하고 입력 MP4
 python scripts/check_assets.py --video input/videos/object_01.mp4
 ```
 
+공식 VGGT source가 이미 서버의 다른 경로에 있다면 복사하지 않고 동일한 repository root를 지정할 수 있다.
+지정한 디렉터리 바로 아래에 `vggt/models/vggt.py`가 있어야 한다.
+
+```bash
+python scripts/check_assets.py \
+  --vggt-source /absolute/path/to/vggt \
+  --checkpoint /absolute/path/to/model.pt \
+  --video /absolute/path/to/object_01.mp4
+python scripts/run_vggt.py \
+  --vggt-source /absolute/path/to/vggt \
+  --checkpoint /absolute/path/to/model.pt \
+  --video /absolute/path/to/object_01.mp4 \
+  --output output/vggt/object_01 --num-frames 24
+```
+
 ## 실행
 
 프로젝트 루트에서 다음을 실행한다.
@@ -192,6 +207,45 @@ OpenCV MP4 codec 지원 여부도 대상 서버에서 `--extract-only`로 먼저
 향후 `src/reconstruction`에 mask provider를 추가하여 SAM3 mask로 point map과 RGB를 동일하게 indexing하면
 object-only PLY를 만들 수 있다. 그 결과와 `camera/` 또는 `colmap/`을 3DGS loader로 넘긴다. 배경/객체 PLY를
 분리하되 현재 scene PLY는 registration과 pose 품질 검증 기준으로 유지하는 구성이 권장된다.
+
+객체만 즉시 추출하려면 각 `processed_frames/frame_NNNNNN.png`와 같은 좌표계의 이진 mask를
+`masks/mask_NNNNNN.png`로 준비한다(객체=255, 배경=0). SAM3 또는 수동 segmentation 어느 쪽도 가능하다.
+
+각 동작은 완전히 분리되어 있다. 객체가 영상 중앙에 있고 배경과 색/질감 차이가 있으면 별도 모델이 필요 없는
+GrabCut masking stage로 즉시 시작할 수 있다.
+
+```bash
+# 1) 프레임 추출만 실행
+python scripts/run_vggt.py --video input/videos/object_01.mp4 \
+  --output output/vggt/object_01 --num-frames 60 --extract-only
+
+# 2) 기존 프레임을 재추출하지 않고 VGGT만 실행
+python scripts/run_vggt.py --video input/videos/object_01.mp4 \
+  --output output/vggt/object_01 --reuse-frames
+
+# 3) 마스킹만 독립 실행
+python scripts/run_masking.py --vggt-output output/vggt/object_01 \
+  --method grabcut --box-scale 0.8
+
+# 4) mask preview 검수 후 객체 PLY만 독립 추출
+python scripts/extract_object_pointcloud.py \
+  --vggt-output output/vggt/object_01 \
+  --masks output/vggt/object_01/masks
+```
+
+마스크와 어두워진 배경 preview는 각각 `masks/`, `visualization/mask_preview/`에 저장된다. GrabCut은 중앙 객체용
+빠른 baseline이며 배경이 복잡하면 mask를 직접 수정하거나 같은 파일 규칙으로 SAM3 결과를 덮어쓴 뒤 3단계만
+다시 실행한다. 즉 프레임 추출이나 VGGT inference를 반복할 필요가 없다. `--reuse-frames`는 기존
+`frames/metadata.json`과 모든 JPG가 존재하는지 검사한 후에만 inference로 진행한다.
+
+```bash
+python scripts/extract_object_pointcloud.py \
+  --vggt-output output/vggt/object_01 \
+  --masks output/vggt/object_01/masks
+```
+
+결과는 `pointcloud/object_pointcloud.ply`이다. mask 크기가 point map과 다르면 왜곡 방지를 위해 자동 resize하지
+않고 오류로 종료한다. 기존 VGGT 결과에 `processed_frames/`가 없다면 최신 코드로 VGGT를 한 번 다시 실행한다.
 
 ## 현재 검증 범위
 

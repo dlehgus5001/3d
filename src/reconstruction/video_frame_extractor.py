@@ -68,3 +68,17 @@ def extract_frames(video: Path, output_dir: Path, cfg: dict[str, Any]) -> list[d
     metadata = {"video": str(video.resolve()), "fps": fps, "source_frame_count": total, "frames": records}
     (output_dir / "metadata.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
     return records
+
+
+def load_extracted_frames(output_dir: Path) -> list[dict[str, Any]]:
+    metadata_path = output_dir / "metadata.json"
+    if not metadata_path.is_file():
+        raise FileNotFoundError(f"Extracted frame metadata not found: {metadata_path}")
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    records = metadata.get("frames", [])
+    if not records:
+        raise RuntimeError(f"No extracted frames recorded in: {metadata_path}")
+    missing = [record["file"] for record in records if not (output_dir / record["file"]).is_file()]
+    if missing:
+        raise FileNotFoundError(f"Extracted frame files missing ({len(missing)}): {missing[0]}")
+    return records

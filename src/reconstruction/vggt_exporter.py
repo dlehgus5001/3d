@@ -104,7 +104,7 @@ def export_colmap(root: Path, frames: list[Path], extrinsics: np.ndarray, intrin
 
 def export_results(result: dict[str, Any], frames: list[Path], root: Path, cfg: dict[str, Any]) -> dict[str, Any]:
     from .visualization import save_depth_preview, save_trajectory
-    for name in ("camera", "depth", "pointmap", "pointcloud", "visualization/depth_preview", "visualization/pointcloud_preview"):
+    for name in ("camera", "depth", "pointmap", "pointcloud", "processed_frames", "visualization/depth_preview", "visualization/pointcloud_preview"):
         (root / name).mkdir(parents=True, exist_ok=True)
     extrinsics, intrinsics = _camera_arrays(result)
     _json_array(root / "camera/intrinsics.json", "intrinsics", intrinsics)
@@ -119,6 +119,8 @@ def export_results(result: dict[str, Any], frames: list[Path], root: Path, cfg: 
     images = _batch(result["input_images"])
     if images.ndim == 4 and images.shape[1] == 3: images = images.transpose(0, 2, 3, 1)
     for i, (depth, image) in enumerate(zip(depths, images), 1):
+        rgb8 = np.clip(image * (255 if image.max(initial=0) <= 1 else 1), 0, 255).astype(np.uint8)
+        cv2.imwrite(str(root / f"processed_frames/frame_{i:06d}.png"), cv2.cvtColor(rgb8, cv2.COLOR_RGB2BGR))
         np.save(root / f"depth/depth_{i:06d}.npy", depth.astype(np.float32))
         save_depth_preview(image, depth, root / f"visualization/depth_preview/depth_{i:06d}.png",
                            root / f"depth/depth_{i:06d}.png")

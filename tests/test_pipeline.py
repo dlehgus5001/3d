@@ -6,8 +6,24 @@ import numpy as np
 import pytest
 
 from reconstruction.video_frame_extractor import extract_frames
+from reconstruction.video_frame_extractor import load_extracted_frames
 from reconstruction.vggt_exporter import export_results
 from reconstruction.vggt_runner import run_vggt
+from reconstruction.object_pointcloud import export_masked_object
+from reconstruction.masking import generate_grabcut_masks
+
+
+def test_cli_exposes_local_vggt_source_override():
+    from scripts.run_vggt import arguments
+    import sys
+
+    original = sys.argv
+    try:
+        sys.argv = ["run_vggt", "--video", "input.mp4", "--vggt-source", "/opt/local/vggt"]
+        parsed = arguments()
+    finally:
+        sys.argv = original
+    assert parsed.vggt_source == Path("/opt/local/vggt")
 
 
 def test_environment_checker_reports_missing_packages(monkeypatch, capsys):
@@ -85,6 +101,18 @@ def test_extract_frames(tmp_path: Path):
     config["num_frames"] = 2
     extract_frames(video, tmp_path / "frames", config)
     assert len(list((tmp_path / "frames").glob("frame_*.jpg"))) == 2
+    assert len(load_extracted_frames(tmp_path / "frames")) == 2
+
+
+def test_standalone_grabcut_masking(tmp_path: Path):
+    images = tmp_path / "processed_frames"; images.mkdir()
+    image = np.zeros((80, 100, 3), np.uint8)
+    cv2.rectangle(image, (25, 15), (75, 65), (230, 230, 230), -1)
+    cv2.imwrite(str(images / "frame_000001.png"), image)
+    count = generate_grabcut_masks(images, tmp_path / "masks", tmp_path / "previews", 0.7, 2)
+    mask = cv2.imread(str(tmp_path / "masks/mask_000001.png"), cv2.IMREAD_GRAYSCALE)
+    assert count == 1 and mask.shape == image.shape[:2]
+    assert (tmp_path / "previews/mask_000001.jpg").is_file()
 
 
 def test_missing_checkpoint_never_downloads(tmp_path: Path):
@@ -119,3 +147,7 @@ def test_export_mock_predictions_is_labeled_as_unit_data(tmp_path: Path):
                      "visualization/depth_preview/depth_000001.png", "colmap/sparse/0/images.txt",
                      "tracks/point_tracks.npz"):
         assert (output / relative).is_file()
+    masks = output / "masks"; masks.mkdir()
+    for index in range(1, 3):
+        cv2.imwrite(str(masks / f"mask_{index:06d}.png"), np.full((4, 6), 255, np.uint8))
+    assert export_masked_object(output, masks, output / "pointcloud/object_pointcloud.ply", 100) == 48

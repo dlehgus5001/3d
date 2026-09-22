@@ -61,7 +61,8 @@ def run_vggt(frame_paths: list[Path], model_cfg: dict[str, Any], source_path: Pa
         raise FileNotFoundError(f"VGGT checkpoint not found: {checkpoint}")
     if not (source_path / "vggt").is_dir():
         raise FileNotFoundError(
-            f"VGGT local source not found: {source_path}. Copy the official repository here; no clone is attempted.")
+            f"VGGT local source not found: {source_path}. Copy the official repository there or pass "
+            "--vggt-source /absolute/path/to/vggt; no clone is attempted.")
     enforce_offline_runtime()
     import torch
     sys.path.insert(0, str(source_path))
