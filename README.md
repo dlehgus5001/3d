@@ -35,6 +35,16 @@ VGGT 자체나 weight를 포함하지 않으며, 누락 시 다운로드하지 �
 
 프로젝트 루트에서 다음을 실행한다.
 
+Python 3.10/PyTorch 2.4 서버에서는 먼저 해당 배포 profile과 환경 점검기를 사용한다.
+
+```bash
+python -m pip install --no-index --find-links=./wheelhouse -r requirements-offline-torch24.txt
+python scripts/check_environment.py
+```
+
+`requirements-offline.txt`는 VGGT 공식 pin(torch 2.3.1/cu121),
+`requirements-offline-torch24.txt`는 현재 보유 서버용 pin(torch 2.4.1/cu124)이다. 두 파일을 동시에 설치하지 않는다.
+
 ```bash
 python scripts/run_vggt.py \
   --video input/videos/object_01.mp4 \
@@ -98,6 +108,17 @@ python -m pip download --only-binary=:all: \
 python -m pip download --only-binary=:all: \
   -r requirements-offline.txt --dest wheelhouse
 python -m pip download --only-binary=:all: pytest --dest wheelhouse  # 테스트를 옮길 경우
+```
+
+Python 3.10/PyTorch 2.4/CUDA-driver 12.5 서버용 wheel은 별도로 다음과 같이 준비한다. `nvidia-smi`의
+12.5 표시는 driver capability이며 PyTorch wheel은 cu124를 사용한다.
+
+```bash
+python3.10 -m pip download --only-binary=:all: \
+  torch==2.4.1 torchvision==0.19.1 --index-url https://download.pytorch.org/whl/cu124 \
+  --dest wheelhouse
+python3.10 -m pip download --only-binary=:all: \
+  -r requirements-offline-torch24.txt --dest wheelhouse
 ```
 
 두 번째 명령이 PyPI의 다른 torch wheel을 추가할 수 있으므로 최종 wheelhouse에서 원하는 CUDA tag인지 검사한다.

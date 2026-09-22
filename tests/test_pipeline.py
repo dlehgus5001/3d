@@ -10,6 +10,21 @@ from reconstruction.vggt_exporter import export_results
 from reconstruction.vggt_runner import run_vggt
 
 
+def test_environment_checker_reports_missing_packages(monkeypatch, capsys):
+    from scripts import check_environment
+
+    real_import = check_environment.importlib.import_module
+
+    def import_module(name):
+        if name == "safetensors":
+            raise ImportError("unit test")
+        return real_import(name)
+
+    monkeypatch.setattr(check_environment.importlib, "import_module", import_module)
+    assert check_environment.main() == 2
+    assert "safetensors" in capsys.readouterr().err
+
+
 def test_extract_frames(tmp_path: Path):
     video = tmp_path / "sample.mp4"
     writer = cv2.VideoWriter(str(video), cv2.VideoWriter_fourcc(*"mp4v"), 10, (64, 48))
