@@ -1,0 +1,13 @@
+# Deployment profile for the available Python 3.10 / CUDA-driver 12.5 server.
+# Accept an existing 2.4.0 or 2.4.1 installation. If installing from wheels,
+# keep the matching pairs: torch 2.4.0 / torchvision 0.19.0 or 2.4.1 / 0.19.1.
+torch>=2.4,<2.5
+torchvision>=0.19,<0.20
+numpy==1.26.1
+opencv-python-headless
+matplotlib
+PyYAML
+Pillow
+einops
+safetensors
+huggingface-hub
