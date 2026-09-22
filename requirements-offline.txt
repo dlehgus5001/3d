@@ -1,8 +1,8 @@
-# Install a CUDA build of torch appropriate for the target driver separately.
-# VGGT's official local source may specify additional pinned dependencies.
-torch>=2.1
-torchvision
-numpy<2.0
+# These core versions match the official VGGT requirements. Download the CUDA
+# wheel variant that is compatible with the target NVIDIA driver.
+torch==2.3.1
+torchvision==0.18.1
+numpy==1.26.1
 opencv-python-headless
 matplotlib
 PyYAML

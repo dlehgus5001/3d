@@ -79,19 +79,21 @@ VGGT extrinsic을 world-to-camera로 취급하고 그대로 COLMAP `images.txt`�
 있다. 일부 3DGS 구현은 track 또는 binary model을 요구하므로 그 경우 COLMAP의 `model_converter`/triangulation
 단계를 폐쇄망에서 추가한다. 카메라 trajectory가 원/타원이고 화살표가 피사체를 향하는지 반드시 확인한다.
 
-Point track은 공식 VGGT API상 query point가 필요한 선택 기능이라 현재 일괄 pipeline에서는 저장하지 않는다.
-모델 반환 key는 최상위 `metadata.json`에 기록되므로 사용하는 VGGT 버전의 출력 계약을 확인할 수 있다.
+Point track은 `inference.query_points`에 전처리된 VGGT 이미지 기준 `[x, y]` 좌표를 하나 이상 지정할 때
+`tracks/point_tracks.npz`로 track/visibility/confidence를 함께 저장한다. 빈 목록이면 비용을 피하기 위해 track
+head를 실행하지 않는다. 모델 반환 key는 최상위 `metadata.json`에 기록된다.
 
 ## 폐쇄망 패키지 준비
 
 ### 1. 외부망 PC
 
 외부망 PC의 OS/Python ABI는 서버와 같아야 한다. 먼저 대상 NVIDIA driver가 지원하는 CUDA 버전을 확인한 뒤,
-그 버전에 맞는 PyTorch wheel index를 **외부망에서 명시적으로** 선택한다. 예를 들어 CUDA 12.4일 때:
+그 버전에 맞는 PyTorch wheel index를 **외부망에서 명시적으로** 선택한다. 현재 VGGT 공식 pin인
+PyTorch 2.3.1과 CUDA 12.1 wheel을 준비하는 예시는 다음과 같다.
 
 ```bash
 python -m pip download --only-binary=:all: \
-  torch torchvision --index-url https://download.pytorch.org/whl/cu124 \
+  torch==2.3.1 torchvision==0.18.1 --index-url https://download.pytorch.org/whl/cu121 \
   --dest wheelhouse
 python -m pip download --only-binary=:all: \
   -r requirements-offline.txt --dest wheelhouse
