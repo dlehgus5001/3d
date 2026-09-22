@@ -1,0 +1,13 @@
+# Deployment profile for the available Python 3.10 / CUDA-driver 12.5 server.
+# Obtain torch/torchvision from the official cu124 wheel index on the online PC.
+torch==2.4.1
+torchvision==0.19.1
+numpy==1.26.1
+opencv-python-headless
+matplotlib
+PyYAML
+Pillow
+einops
+safetensors
+huggingface-hub
+
