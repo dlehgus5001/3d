@@ -38,9 +38,20 @@ VGGT 자체나 weight를 포함하지 않으며, 누락 시 다운로드하지 �
 Python 3.10/PyTorch 2.4 서버에서는 먼저 해당 배포 profile과 환경 점검기를 사용한다.
 
 ```bash
-python -m pip install --no-index --find-links=./wheelhouse -r requirements-offline-torch24.txt
+cd /path/to/3d
+python scripts/check_wheelhouse.py \
+  --wheelhouse "$PWD/wheelhouse" \
+  --requirements "$PWD/requirements-offline-torch24.txt"
+python -m pip install --no-index \
+  --find-links="$PWD/wheelhouse" \
+  -r "$PWD/requirements-offline-torch24.txt"
 python scripts/check_environment.py
 ```
+
+`Location './wheelhouse' is ignored` 또는 `No matching distribution found`가 나오면 dependency 문제가 아니라,
+현재 작업 디렉터리에 `wheelhouse/`가 없거나 필요한 wheel을 폐쇄망으로 복사하지 않은 것이다. 위처럼 프로젝트
+루트로 이동하고 절대 경로로 검사한다. `wheelhouse/`에는 최소한 `torch-2.4.1...whl`과
+`torchvision-0.19.1...whl` 및 모든 전이 dependency wheel이 실제 파일로 존재해야 한다.
 
 `requirements-offline.txt`는 VGGT 공식 pin(torch 2.3.1/cu121),
 `requirements-offline-torch24.txt`는 현재 보유 서버용 pin(torch 2.4.1/cu124)이다. 두 파일을 동시에 설치하지 않는다.
@@ -119,6 +130,9 @@ python3.10 -m pip download --only-binary=:all: \
   --dest wheelhouse
 python3.10 -m pip download --only-binary=:all: \
   -r requirements-offline-torch24.txt --dest wheelhouse
+python3.10 scripts/check_wheelhouse.py \
+  --wheelhouse "$PWD/wheelhouse" \
+  --requirements "$PWD/requirements-offline-torch24.txt"
 ```
 
 두 번째 명령이 PyPI의 다른 torch wheel을 추가할 수 있으므로 최종 wheelhouse에서 원하는 CUDA tag인지 검사한다.

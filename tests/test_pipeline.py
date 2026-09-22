@@ -25,6 +25,30 @@ def test_environment_checker_reports_missing_packages(monkeypatch, capsys):
     assert "safetensors" in capsys.readouterr().err
 
 
+def test_wheelhouse_checker_reports_missing_directory(tmp_path, monkeypatch, capsys):
+    from scripts import check_wheelhouse
+
+    requirements = tmp_path / "requirements.txt"
+    requirements.write_text("torch==2.4.1\n", encoding="utf-8")
+    monkeypatch.setattr("sys.argv", ["check_wheelhouse", "--wheelhouse", str(tmp_path / "missing"),
+                                     "--requirements", str(requirements)])
+    assert check_wheelhouse.main() == 2
+    assert "wheelhouse directory not found" in capsys.readouterr().out
+
+
+def test_wheelhouse_checker_accepts_direct_requirements(tmp_path, monkeypatch):
+    from scripts import check_wheelhouse
+
+    requirements = tmp_path / "requirements.txt"
+    requirements.write_text("torch==2.4.1\nopencv-python-headless\n", encoding="utf-8")
+    wheelhouse = tmp_path / "wheelhouse"; wheelhouse.mkdir()
+    (wheelhouse / "torch-2.4.1-cp310-linux.whl").touch()
+    (wheelhouse / "opencv_python_headless-4.11-cp310-linux.whl").touch()
+    monkeypatch.setattr("sys.argv", ["check_wheelhouse", "--wheelhouse", str(wheelhouse),
+                                     "--requirements", str(requirements)])
+    assert check_wheelhouse.main() == 0
+
+
 def test_extract_frames(tmp_path: Path):
     video = tmp_path / "sample.mp4"
     writer = cv2.VideoWriter(str(video), cv2.VideoWriter_fourcc(*"mp4v"), 10, (64, 48))
