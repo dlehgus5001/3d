@@ -43,10 +43,18 @@ python scripts/check_assets.py --video input/videos/object_01.mp4
 
 프로젝트 루트에서 다음을 실행한다.
 
-Python 3.10/PyTorch 2.4 서버에서는 먼저 해당 배포 profile과 환경 점검기를 사용한다.
+Python 3.10/PyTorch 2.4가 이미 설치된 서버에서는 `wheelhouse/`가 런타임에 필요하지 않다. 먼저 환경과
+asset만 검사한다.
 
 ```bash
 cd /path/to/3d
+python scripts/check_environment.py
+python scripts/check_assets.py --video input/videos/object_01.mp4
+```
+
+환경 검사가 missing package를 보고할 때만 외부망에서 만든 `wheelhouse/`를 서버로 복사한 뒤 설치한다.
+
+```bash
 python scripts/check_wheelhouse.py \
   --wheelhouse "$PWD/wheelhouse" \
   --requirements "$PWD/requirements-offline-torch24.txt"
@@ -54,7 +62,6 @@ python -m pip install --no-index \
   --find-links="$PWD/wheelhouse" \
   -r "$PWD/requirements-offline-torch24.txt"
 python scripts/check_environment.py
-python scripts/check_assets.py --video input/videos/object_01.mp4
 ```
 
 `Location './wheelhouse' is ignored` 또는 `No matching distribution found`가 나오면 dependency 문제가 아니라,
@@ -69,6 +76,8 @@ python scripts/check_assets.py --video input/videos/object_01.mp4
 재설치할 필요가 없다. 특히 `wheelhouse/`가 없는 서버에서 `--no-index --find-links=./wheelhouse`를 실행하면
 pip가 설치 파일을 찾을 수 없으므로 사용하지 않는다. `Defaulting to user installation`은 권한 안내이며 핵심
 오류는 `wheelhouse` 부재다. 현재 torch가 2.4.0이어도 이 profile 범위에 포함된다.
+환경 검사가 성공한다면 `check_wheelhouse.py`와 `pip install --no-index`를 건너뛴다. wheelhouse는 오프라인
+설치 매체이지 VGGT 실행 입력이 아니다.
 
 ```bash
 python scripts/run_vggt.py \
