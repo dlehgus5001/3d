@@ -54,24 +54,38 @@ def _numpy_tree(value: Any) -> Any:
     return value
 
 
+def _import_local_vggt(source_path: Path):
+    required = (source_path / "vggt/models/vggt.py", source_path / "vggt/utils/load_fn.py",
+                source_path / "vggt/utils/pose_enc.py")
+    missing = [str(path) for path in required if not path.is_file()]
+    if missing:
+        raise FileNotFoundError(f"Invalid VGGT source root; missing: {missing[0]}")
+    # An unrelated pip package named `vggt` may already be cached. Ensure the
+    # explicitly supplied checkout wins and keep it on sys.path for lazy imports.
+    for name in tuple(sys.modules):
+        if name == "vggt" or name.startswith("vggt."):
+            del sys.modules[name]
+    source_string = str(source_path)
+    if source_string in sys.path:
+        sys.path.remove(source_string)
+    sys.path.insert(0, source_string)
+    model_module = importlib.import_module("vggt.models.vggt")
+    module_path = Path(model_module.__file__).resolve()
+    if source_path.resolve() not in module_path.parents:
+        raise ImportError(f"Loaded VGGT from unexpected location: {module_path}")
+    return (model_module.VGGT,
+            importlib.import_module("vggt.utils.load_fn").load_and_preprocess_images,
+            importlib.import_module("vggt.utils.pose_enc").pose_encoding_to_extri_intri)
+
+
 def run_vggt(frame_paths: list[Path], model_cfg: dict[str, Any], source_path: Path,
              checkpoint: Path, query_points: list[list[float]] | None = None) -> dict[str, Any]:
     """Run a local checkout of the official VGGT package without any download fallback."""
     if not checkpoint.is_file():
         raise FileNotFoundError(f"VGGT checkpoint not found: {checkpoint}")
-    if not (source_path / "vggt").is_dir():
-        raise FileNotFoundError(
-            f"VGGT local source not found: {source_path}. Copy the official repository there or pass "
-            "--vggt-source /absolute/path/to/vggt; no clone is attempted.")
     enforce_offline_runtime()
     import torch
-    sys.path.insert(0, str(source_path))
-    try:
-        VGGT = importlib.import_module("vggt.models.vggt").VGGT
-        load_images = importlib.import_module("vggt.utils.load_fn").load_and_preprocess_images
-        pose_decode = importlib.import_module("vggt.utils.pose_enc").pose_encoding_to_extri_intri
-    finally:
-        sys.path.pop(0)
+    VGGT, load_images, pose_decode = _import_local_vggt(source_path)
 
     device = gpu_report(str(model_cfg.get("device", "cuda")), bool(model_cfg.get("allow_cpu_fallback", False)))
     model = VGGT()

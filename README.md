@@ -54,6 +54,11 @@ python scripts/run_vggt.py \
   --output output/vggt/object_01 --num-frames 24
 ```
 
+`No module named 'vggt.models'`는 대개 `--vggt-source`를 repository root가 아닌 내부 package 디렉터리로
+지정했거나, 다른 pip package `vggt`가 먼저 import된 경우다. 최신 runner는 cached package를 제거하고 지정한
+local checkout을 최우선으로 로드하며 실제 module 경로도 검증한다. 올바른 값은 `.../vggt/models/vggt.py`에서
+앞쪽의 repository root이다(예: 파일이 `/data/VGGT/vggt/models/vggt.py`이면 `--vggt-source /data/VGGT`).
+
 ## 실행
 
 프로젝트 루트에서 다음을 실행한다.
@@ -215,9 +220,9 @@ object-only PLY를 만들 수 있다. 그 결과와 `camera/` 또는 `colmap/`�
 GrabCut masking stage로 즉시 시작할 수 있다.
 
 ```bash
-# 1) 프레임 추출만 실행
-python scripts/run_vggt.py --video input/videos/object_01.mp4 \
-  --output output/vggt/object_01 --num-frames 60 --extract-only
+# 1) 프레임 추출 전용 명령(VGGT module을 import하지 않음)
+python scripts/extract_frames.py --video input/videos/object_01.mp4 \
+  --output output/vggt/object_01 --num-frames 60
 
 # 2) 기존 프레임을 재추출하지 않고 VGGT만 실행
 python scripts/run_vggt.py --video input/videos/object_01.mp4 \
@@ -237,6 +242,10 @@ python scripts/extract_object_pointcloud.py \
 빠른 baseline이며 배경이 복잡하면 mask를 직접 수정하거나 같은 파일 규칙으로 SAM3 결과를 덮어쓴 뒤 3단계만
 다시 실행한다. 즉 프레임 추출이나 VGGT inference를 반복할 필요가 없다. `--reuse-frames`는 기존
 `frames/metadata.json`과 모든 JPG가 존재하는지 검사한 후에만 inference로 진행한다.
+
+프레임만 추출할 때 `[3/5] Running VGGT inference`가 보이면 `run_vggt.py`를 `--extract-only` 없이 실행한 것이다.
+혼동을 막기 위해 1단계에서는 반드시 `scripts/extract_frames.py`를 사용한다. 이 스크립트는 VGGT runner나
+checkpoint를 전혀 import하지 않으므로 `vggt.models` 유무와 관계없이 프레임 추출까지만 실행하고 종료한다.
 
 ```bash
 python scripts/extract_object_pointcloud.py \

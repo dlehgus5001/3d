@@ -1,4 +1,5 @@
 import json
+import sys
 from pathlib import Path
 
 import cv2
@@ -8,7 +9,7 @@ import pytest
 from reconstruction.video_frame_extractor import extract_frames
 from reconstruction.video_frame_extractor import load_extracted_frames
 from reconstruction.vggt_exporter import export_results
-from reconstruction.vggt_runner import run_vggt
+from reconstruction.vggt_runner import _import_local_vggt, run_vggt
 from reconstruction.object_pointcloud import export_masked_object
 from reconstruction.masking import generate_grabcut_masks
 
@@ -24,6 +25,19 @@ def test_cli_exposes_local_vggt_source_override():
     finally:
         sys.argv = original
     assert parsed.vggt_source == Path("/opt/local/vggt")
+
+
+def test_standalone_extractor_does_not_import_vggt_runner():
+    import scripts.extract_frames  # noqa: F401
+
+    assert "vggt.models.vggt" not in sys.modules
+
+
+def test_local_vggt_import_rejects_inner_package_path(tmp_path):
+    inner = tmp_path / "vggt"
+    inner.mkdir()
+    with pytest.raises(FileNotFoundError, match="Invalid VGGT source root"):
+        _import_local_vggt(inner)
 
 
 def test_environment_checker_reports_missing_packages(monkeypatch, capsys):
