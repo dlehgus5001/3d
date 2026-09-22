@@ -79,6 +79,10 @@ pip가 설치 파일을 찾을 수 없으므로 사용하지 않는다. `Default
 환경 검사가 성공한다면 `check_wheelhouse.py`와 `pip install --no-index`를 건너뛴다. wheelhouse는 오프라인
 설치 매체이지 VGGT 실행 입력이 아니다.
 
+NVIDIA container의 `torch 2.4.0a0+...nv24.07`은 PEP 440상 stable `2.4.0`보다 낮은 prerelease다. 따라서
+`torch>=2.4` 조건에는 포함되지 않는다. 서버 profile은 이를 지원하도록 `torch>=2.4.0a0,<2.5`로 선언한다.
+그럼에도 이미 환경 검사가 성공한 서버에서는 pip 명령 자체를 실행하지 않는 것이 올바른 절차다.
+
 ```bash
 python scripts/run_vggt.py \
   --video input/videos/object_01.mp4 \

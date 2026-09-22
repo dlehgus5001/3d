@@ -29,7 +29,7 @@ def test_wheelhouse_checker_reports_missing_directory(tmp_path, monkeypatch, cap
     from scripts import check_wheelhouse
 
     requirements = tmp_path / "requirements.txt"
-    requirements.write_text("torch>=2.4,<2.5\n", encoding="utf-8")
+    requirements.write_text("torch>=2.4.0a0,<2.5\n", encoding="utf-8")
     monkeypatch.setattr("sys.argv", ["check_wheelhouse", "--wheelhouse", str(tmp_path / "missing"),
                                      "--requirements", str(requirements)])
     assert check_wheelhouse.main() == 2
@@ -40,7 +40,7 @@ def test_wheelhouse_checker_accepts_direct_requirements(tmp_path, monkeypatch):
     from scripts import check_wheelhouse
 
     requirements = tmp_path / "requirements.txt"
-    requirements.write_text("torch>=2.4,<2.5\nopencv-python-headless\n", encoding="utf-8")
+    requirements.write_text("torch>=2.4.0a0,<2.5\nopencv-python-headless\n", encoding="utf-8")
     wheelhouse = tmp_path / "wheelhouse"; wheelhouse.mkdir()
     (wheelhouse / "torch-2.4.1-cp310-linux.whl").touch()
     (wheelhouse / "opencv_python_headless-4.11-cp310-linux.whl").touch()
