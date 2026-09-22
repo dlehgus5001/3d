@@ -31,6 +31,14 @@ VGGT source와 checkpoint는 외부망 환경에서 공식 배포본을 검증�
 commit ID와 checkpoint checksum을 함께 기록할 것을 권장한다. 이 저장소는 라이선스와 파일 크기 문제로
 VGGT 자체나 weight를 포함하지 않으며, 누락 시 다운로드하지 않고 정확한 local path 오류로 종료한다.
 
+이 다섯 항목이 `MISSING`이면 코드 오류가 아니라 실행 asset이 아직 복사되지 않은 상태다. 인터넷 가능한
+staging PC에서 공식 VGGT repository와 checkpoint를 준비하고 입력 MP4와 함께 폐쇄망 서버의 위 경로로
+복사한다. 폐쇄망 서버에서 clone/download를 시도하지 않는다. 복사 후 한 번에 검사한다.
+
+```bash
+python scripts/check_assets.py --video input/videos/object_01.mp4
+```
+
 ## 실행
 
 프로젝트 루트에서 다음을 실행한다.
@@ -46,6 +54,7 @@ python -m pip install --no-index \
   --find-links="$PWD/wheelhouse" \
   -r "$PWD/requirements-offline-torch24.txt"
 python scripts/check_environment.py
+python scripts/check_assets.py --video input/videos/object_01.mp4
 ```
 
 `Location './wheelhouse' is ignored` 또는 `No matching distribution found`가 나오면 dependency 문제가 아니라,

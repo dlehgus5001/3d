@@ -49,6 +49,24 @@ def test_wheelhouse_checker_accepts_direct_requirements(tmp_path, monkeypatch):
     assert check_wheelhouse.main() == 0
 
 
+def test_asset_checker_reports_and_accepts_required_files(tmp_path, monkeypatch, capsys):
+    from scripts import check_assets
+
+    source = tmp_path / "vggt-source"
+    checkpoint, video = tmp_path / "model.pt", tmp_path / "input.mp4"
+    argv = ["check_assets", "--vggt-source", str(source), "--checkpoint", str(checkpoint),
+            "--video", str(video)]
+    monkeypatch.setattr("sys.argv", argv)
+    assert check_assets.main() == 2
+    assert "MISSING: VGGT model source" in capsys.readouterr().out
+    for relative in ("vggt/models/vggt.py", "vggt/utils/load_fn.py", "vggt/utils/pose_enc.py"):
+        path = source / relative; path.parent.mkdir(parents=True, exist_ok=True); path.write_text("# local\n")
+    checkpoint.write_bytes(b"checkpoint"); video.write_bytes(b"video")
+    monkeypatch.setattr("sys.argv", argv)
+    assert check_assets.main() == 0
+    assert "All local assets are ready" in capsys.readouterr().out
+
+
 def test_extract_frames(tmp_path: Path):
     video = tmp_path / "sample.mp4"
     writer = cv2.VideoWriter(str(video), cv2.VideoWriter_fourcc(*"mp4v"), 10, (64, 48))
