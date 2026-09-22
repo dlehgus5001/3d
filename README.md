@@ -54,7 +54,12 @@ python scripts/check_environment.py
 `torchvision-0.19.1...whl` 및 모든 전이 dependency wheel이 실제 파일로 존재해야 한다.
 
 `requirements-offline.txt`는 VGGT 공식 pin(torch 2.3.1/cu121),
-`requirements-offline-torch24.txt`는 현재 보유 서버용 pin(torch 2.4.1/cu124)이다. 두 파일을 동시에 설치하지 않는다.
+`requirements-offline-torch24.txt`는 현재 보유 서버용 범위(torch 2.4.x/torchvision 0.19.x/cu124)이다. 두 파일을 동시에 설치하지 않는다.
+
+이미 PyTorch 2.4가 설치된 서버라면 먼저 `python scripts/check_environment.py`를 실행한다. 정상이라면 torch를
+재설치할 필요가 없다. 특히 `wheelhouse/`가 없는 서버에서 `--no-index --find-links=./wheelhouse`를 실행하면
+pip가 설치 파일을 찾을 수 없으므로 사용하지 않는다. `Defaulting to user installation`은 권한 안내이며 핵심
+오류는 `wheelhouse` 부재다. 현재 torch가 2.4.0이어도 이 profile 범위에 포함된다.
 
 ```bash
 python scripts/run_vggt.py \

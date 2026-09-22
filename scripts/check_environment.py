@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib
 import platform
+import re
 import sys
 
 
@@ -34,11 +35,16 @@ def main() -> int:
         return 2
 
     torch = modules["torch"]
+    torch_version = tuple(map(int, re.match(r"(\d+)\.(\d+)", torch.__version__).groups()))
+    torchvision_version = tuple(map(int, re.match(r"(\d+)\.(\d+)", modules["torchvision"].__version__).groups()))
     print(f"PyTorch: {torch.__version__}")
     print(f"torchvision: {modules['torchvision'].__version__}")
     print(f"NumPy: {modules['numpy'].__version__}")
     print(f"PyTorch CUDA runtime: {torch.version.cuda}")
     print(f"CUDA available: {torch.cuda.is_available()}")
+    if torch_version != (2, 4) or torchvision_version != (0, 19):
+        print("ERROR: this deployment profile requires PyTorch 2.4.x and torchvision 0.19.x.", file=sys.stderr)
+        return 4
     if not torch.cuda.is_available():
         print("ERROR: CUDA GPU is unavailable; VGGT GPU inference cannot run.", file=sys.stderr)
         return 3
