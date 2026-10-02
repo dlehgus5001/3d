@@ -118,9 +118,12 @@ def export_results(result: dict[str, Any], frames: list[Path], root: Path, cfg: 
     depths = np.squeeze(_batch(depths), axis=-1) if _batch(depths).shape[-1] == 1 else _batch(depths)
     images = _batch(result["input_images"])
     if images.ndim == 4 and images.shape[1] == 3: images = images.transpose(0, 2, 3, 1)
+    processed_frames: list[Path] = []
     for i, (depth, image) in enumerate(zip(depths, images), 1):
         rgb8 = np.clip(image * (255 if image.max(initial=0) <= 1 else 1), 0, 255).astype(np.uint8)
-        cv2.imwrite(str(root / f"processed_frames/frame_{i:06d}.png"), cv2.cvtColor(rgb8, cv2.COLOR_RGB2BGR))
+        processed_path = root / f"processed_frames/frame_{i:06d}.png"
+        cv2.imwrite(str(processed_path), cv2.cvtColor(rgb8, cv2.COLOR_RGB2BGR))
+        processed_frames.append(processed_path)
         np.save(root / f"depth/depth_{i:06d}.npy", depth.astype(np.float32))
         save_depth_preview(image, depth, root / f"visualization/depth_preview/depth_{i:06d}.png",
                            root / f"depth/depth_{i:06d}.png")
@@ -142,5 +145,8 @@ def export_results(result: dict[str, Any], frames: list[Path], root: Path, cfg: 
     selected = _write_ply(root / "pointcloud/pointcloud.ply", xyz, rgb, conf_flat,
                           float(cfg.get("conf_threshold", 3)), int(cfg.get("max_points", 2000000)))
     if cfg.get("colmap", True):
-        export_colmap(root, frames, extrinsics, intrinsics, images.shape[2], images.shape[1], xyz[selected], rgb[selected])
+        # Intrinsics are predicted in VGGT's preprocessed image coordinates, so
+        # COLMAP must reference those exact images rather than the source JPGs.
+        export_colmap(root, processed_frames, extrinsics, intrinsics,
+                      images.shape[2], images.shape[1], xyz[selected], rgb[selected])
     return {"frame_count": len(frames), "point_count": len(selected), "prediction_keys": sorted(result.keys())}

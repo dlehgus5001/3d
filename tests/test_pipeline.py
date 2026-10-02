@@ -161,6 +161,9 @@ def test_export_mock_predictions_is_labeled_as_unit_data(tmp_path: Path):
                      "visualization/depth_preview/depth_000001.png", "colmap/sparse/0/images.txt",
                      "tracks/point_tracks.npz"):
         assert (output / relative).is_file()
+    colmap_images = (output / "colmap/sparse/0/images.txt").read_text(encoding="utf-8")
+    assert "frame_000001.png" in colmap_images
+    assert (output / "colmap/images/frame_000001.png").is_file()
     masks = output / "masks"; masks.mkdir()
     for index in range(1, 3):
         cv2.imwrite(str(masks / f"mask_{index:06d}.png"), np.full((4, 6), 255, np.uint8))

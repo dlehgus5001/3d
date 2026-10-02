@@ -256,6 +256,14 @@ python scripts/extract_object_pointcloud.py \
 결과는 `pointcloud/object_pointcloud.ply`이다. mask 크기가 point map과 다르면 왜곡 방지를 위해 자동 resize하지
 않고 오류로 종료한다. 기존 VGGT 결과에 `processed_frames/`가 없다면 최신 코드로 VGGT를 한 번 다시 실행한다.
 
+## 3DGS 연결
+
+COLMAP export의 `images/`는 VGGT intrinsic과 정확히 같은 좌표계인 `processed_frames/*.png`를 사용한다.
+원본 추출 JPG는 VGGT loader에서 crop/resize될 수 있으므로 이를 3DGS에 camera intrinsic과 함께 섞어 쓰면 안 된다.
+3DGS 학습 입력은 `colmap/images`, `colmap/sparse/0`, 그리고 객체 학습 시 `masks`와
+`pointcloud/object_pointcloud.ply`를 사용한다. 현재 COLMAP text model은 observation track이 없으므로 사용하는
+3DGS loader가 이를 허용하는지 확인하거나 VGGT JSON camera를 직접 읽는 adapter를 사용한다.
+
 ## 현재 검증 범위
 
 자동 테스트는 synthetic MP4의 frame sampling/resize/metadata와 checkpoint 누락 시 즉시 실패(다운로드 없음)를
