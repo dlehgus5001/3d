@@ -8,6 +8,29 @@ import cv2
 import numpy as np
 
 
+def _open_video(video: Path) -> tuple[cv2.VideoCapture, str]:
+    if video.stat().st_size == 0:
+        raise RuntimeError(f"Input video is empty (0 bytes): {video}")
+    with video.open("rb") as handle:
+        if handle.read(64).startswith(b"version https://git-lfs.github.com/spec"):
+            raise RuntimeError(f"Input video is a Git LFS pointer, not MP4 data: {video}")
+    attempts = [(cv2.CAP_ANY, "auto")]
+    for attribute, name in (("CAP_FFMPEG", "FFmpeg"), ("CAP_GSTREAMER", "GStreamer")):
+        backend = getattr(cv2, attribute, None)
+        if backend is not None and backend not in {item[0] for item in attempts}:
+            attempts.append((backend, name))
+    tried = []
+    for backend, name in attempts:
+        capture = cv2.VideoCapture(str(video), backend)
+        if capture.isOpened():
+            return capture, name
+        capture.release(); tried.append(name)
+    raise RuntimeError(
+        f"OpenCV could not open video: {video} (size={video.stat().st_size} bytes, "
+        f"OpenCV={cv2.__version__}, backends tried={','.join(tried)}). "
+        "The file may be corrupt/partial or this OpenCV build may lack an MP4 codec.")
+
+
 def _candidate_indices(total: int, fps: float, cfg: dict[str, Any]) -> list[int]:
     start = max(0, round(float(cfg["start_sec"]) * fps))
     end_value = cfg.get("end_sec")
@@ -32,9 +55,8 @@ def extract_frames(video: Path, output_dir: Path, cfg: dict[str, Any]) -> list[d
     # A rerun with fewer frames must not leave files that look like current inputs.
     for stale_frame in output_dir.glob("frame_*.jpg"):
         stale_frame.unlink()
-    capture = cv2.VideoCapture(str(video))
-    if not capture.isOpened():
-        raise RuntimeError(f"OpenCV could not open video: {video}")
+    capture, backend = _open_video(video)
+    print(f"Video backend: {backend}")
     fps = float(capture.get(cv2.CAP_PROP_FPS))
     total = int(capture.get(cv2.CAP_PROP_FRAME_COUNT))
     if fps <= 0 or total <= 0:

@@ -118,6 +118,16 @@ def test_extract_frames(tmp_path: Path):
     assert len(load_extracted_frames(tmp_path / "frames")) == 2
 
 
+def test_extract_rejects_empty_and_lfs_video(tmp_path: Path):
+    empty = tmp_path / "empty.mp4"; empty.touch()
+    with pytest.raises(RuntimeError, match="empty"):
+        extract_frames(empty, tmp_path / "empty-frames", {})
+    pointer = tmp_path / "pointer.mp4"
+    pointer.write_text("version https://git-lfs.github.com/spec/v1\noid sha256:abc\nsize 123\n")
+    with pytest.raises(RuntimeError, match="Git LFS pointer"):
+        extract_frames(pointer, tmp_path / "pointer-frames", {})
+
+
 def test_standalone_grabcut_masking(tmp_path: Path):
     images = tmp_path / "processed_frames"; images.mkdir()
     image = np.zeros((80, 100, 3), np.uint8)

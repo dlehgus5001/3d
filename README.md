@@ -206,6 +206,10 @@ python scripts/run_vggt.py --help
 고정한다. 특히 NVIDIA driver ↔ CUDA-enabled PyTorch ↔ GPU compute capability, Python 버전을 맞춰야 한다.
 OpenCV MP4 codec 지원 여부도 대상 서버에서 `--extract-only`로 먼저 확인한다.
 
+`OpenCV could not open video`가 발생하면 `ls -lh`, `file`, `ffprobe`로 파일 크기/형식/codec을 확인한다. Extractor는
+0-byte 파일과 Git LFS pointer를 별도로 진단하고 auto, FFmpeg, GStreamer backend를 순서대로 시도한다. 원본이
+H.265/HEVC이고 서버 OpenCV에 decoder가 없다면 외부망에서 H.264/yuv420p MP4로 변환하여 반입한다.
+
 ## 후속 SAM3 / object-centric 3DGS 확장점
 
 `pointmap/pointmap_*.npy`의 각 픽셀은 원본 frame 픽셀과 대응하고, confidence filtering 전 정보도 보존한다.
