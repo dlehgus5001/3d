@@ -1,0 +1,11 @@
+__pycache__/
+.pytest_cache/
+*.pyc
+/input/videos/*
+!/input/videos/.gitkeep
+/output/*
+!/output/.gitkeep
+/models/vggt/*
+!/models/vggt/.gitkeep
+/third_party/vggt/
+/wheelhouse/
