@@ -321,7 +321,7 @@ def readDust3rCameras(dust3r_frames, images_folder, depths_npy=None, confidences
         mask = mask.astype(np.float32) / 255.0
 
         mono_depth = depths[id] if depths is not None else None
-        confidence = confidences[id] / confidences[id].max() if confidences is not None else None
+        confidence = confidences[id] / max(float(confidences[id].max()), 1e-6) if confidences is not None else None
 
         cam_info = CameraInfo(
             uid=frame['id'],
@@ -343,18 +343,16 @@ def readDust3rCameras(dust3r_frames, images_folder, depths_npy=None, confidences
     return cam_infos
 
 def readDust3rSceneInfo(path, images, eval, extra_opts=None):
+    from truck_pipeline.data import validate_dataset
+    if eval:
+        raise ValueError('DUSt3R input selection is explicit; do not use --eval')
+    records = validate_dataset(path)
     images_folder = osp.join(path, "images")
-    if extra_opts.resolution in [1, 2, 4, 8]:
-        tmp_images_folder = images_folder + f'_{str(extra_opts.resolution)}' if extra_opts.resolution != 1 else images_folder
-        if not osp.exists(tmp_images_folder):
-            print(f"The {tmp_images_folder} is not found, use original resolution images")
-        else:
-            print(f"Using resized images in {tmp_images_folder}...")
-            images_folder = tmp_images_folder
-    else:
-        print("use original resolution images")
-
-    ids = np.loadtxt(osp.join(path, f"sparse_{str(extra_opts.sparse_view_num)}.txt"), dtype=np.int32)
+    # Always read full-FOV originals; loadCam alone controls training resolution.
+    # Pre-existing images_4 folders must not silently change images or intrinsics.
+    ids = np.atleast_1d(np.loadtxt(osp.join(path, f"sparse_{str(extra_opts.sparse_view_num)}.txt"), dtype=np.int32))
+    if len(ids) != extra_opts.sparse_view_num or len(set(ids.tolist())) != len(ids) or np.any(ids < 0) or np.any(ids >= len(records)):
+        raise ValueError('sparse_N.txt must contain exactly N unique valid zero-based frame indices')
 
     if hasattr(extra_opts, 'dust3r_json') and extra_opts.dust3r_json:
         with open(extra_opts.dust3r_json) as f:
@@ -362,6 +360,12 @@ def readDust3rSceneInfo(path, images, eval, extra_opts=None):
     else:
         with open(osp.join(path, f"dust3r_{str(extra_opts.sparse_view_num)}.json")) as f:
             dust3r_frames = json.load(f)
+    expected_names = [records[i]['filename'] for i in ids]
+    if [frame['img_name'] for frame in dust3r_frames] != expected_names:
+        raise ValueError('DUSt3R camera order/names differ from sparse_N.txt; rerun pose estimation')
+    if [frame['id'] for frame in dust3r_frames] != list(range(len(ids))):
+        raise ValueError('DUSt3R camera ids must be consecutive local indices')
+    print(f'Actual training frames ({len(expected_names)}): {expected_names}')
     train_cam_infos = readDust3rCameras(
         dust3r_frames, images_folder,
         osp.join(path, f"dust3r_depth_{str(extra_opts.sparse_view_num)}.npy"),
@@ -373,7 +377,7 @@ def readDust3rSceneInfo(path, images, eval, extra_opts=None):
         test_cam_infos = readDust3rCameras(test_dust3r_frames, images_folder)
     else:
         test_cam_infos = []
-    render_cam_infos = generate_ellipse_path_from_camera_infos(train_cam_infos)
+    render_cam_infos = [] if getattr(extra_opts, 'skip_render_cameras', False) else generate_ellipse_path_from_camera_infos(train_cam_infos)
     nerf_normalization = getNerfppNorm(train_cam_infos)
 
     ply_path = osp.join(path, extra_opts.init_pcd_name if extra_opts.init_pcd_name.endswith(".ply") 

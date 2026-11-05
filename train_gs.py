@@ -43,9 +43,14 @@ def training(args, dataset, opt, pipe, testing_iterations, saving_iterations, ch
     tb_writer = prepare_output_and_logger(dataset)
     gaussians = GaussianModel(dataset.sh_degree)
     scene = Scene(dataset, gaussians, extra_opts=args)
+    actual_frames = [camera.image_name for camera in scene.getTrainCameras()]
+    print(f'Actual training frame count: {len(actual_frames)}; frames: {actual_frames}', flush=True)
+    with open(os.path.join(scene.model_path, 'training_frames.json'), 'w') as stream:
+        json.dump({'count': len(actual_frames), 'filenames': actual_frames}, stream, indent=2)
+    frame_visits = dict.fromkeys(actual_frames, 0)
     gaussians.training_setup(opt)
     if checkpoint:
-        (model_params, first_iter) = torch.load(checkpoint)
+        (model_params, first_iter) = torch.load(checkpoint, weights_only=False)
         gaussians.restore(model_params, opt)
 
     bg_color = [1, 1, 1] if dataset.white_background else [0, 0, 0]
@@ -85,6 +90,7 @@ def training(args, dataset, opt, pipe, testing_iterations, saving_iterations, ch
         if not viewpoint_stack:
             viewpoint_stack = scene.getTrainCameras().copy()
         viewpoint_cam = viewpoint_stack.pop(randint(0, len(viewpoint_stack)-1))
+        frame_visits[viewpoint_cam.image_name] += 1
 
         if args.use_dust3r:
             pose_opt_params = [
@@ -163,7 +169,8 @@ def training(args, dataset, opt, pipe, testing_iterations, saving_iterations, ch
                 torch.save((gaussians.capture(), iteration), scene.model_path + "/ckpt" + str(iteration) + ".pth")
 
     if args.use_dust3r:
-        with open(os.path.join(dataset.source_path, f'dust3r_{args.sparse_view_num}.json'), 'r') as f:
+        camera_json = args.dust3r_json or os.path.join(dataset.source_path, f'dust3r_{args.sparse_view_num}.json')
+        with open(camera_json, 'r') as f:
             json_cameras = json.load(f)
         refined_cameras = []
         for viewpoint_cam, json_camera in zip(scene.getTrainCameras(), json_cameras):
@@ -177,6 +184,19 @@ def training(args, dataset, opt, pipe, testing_iterations, saving_iterations, ch
             refined_cameras.append(camera)
         with open(os.path.join(scene.model_path, 'refined_cams.json'), 'w') as f:
             json.dump(refined_cameras, f, indent=4)
+        # This self-contained metadata travels with the trained PLY: orbit
+        # rendering never needs the source image folders or pose estimation.
+        with open(os.path.join(scene.model_path, 'truck_metadata.json'), 'w') as f:
+            json.dump({'schema_version': 1, 'sh_degree': dataset.sh_degree,
+                       'iterations': opt.iterations, 'cameras': refined_cameras,
+                       'training_frame_count': len(actual_frames),
+                       'training_frame_names': actual_frames,
+                       'frame_visit_counts': frame_visits}, f, indent=2)
+    with open(os.path.join(scene.model_path, 'frame_visits.json'), 'w') as f:
+        json.dump(frame_visits, f, indent=2)
+    print(f'Frames actually sampled by optimizer: {sum(v > 0 for v in frame_visits.values())}/{len(actual_frames)}; visits: {frame_visits}', flush=True)
+    if tb_writer:
+        tb_writer.close()
 
 def prepare_output_and_logger(args):
     if not args.model_path:
@@ -271,7 +291,7 @@ def cal_loss(opt, args, image, render_pkg, viewpoint_cam, bg, silhouette_loss_ty
             # we apply masked monocular loss
             gt_mask = torch.where(viewpoint_cam.mask > 0.5, True, False)
             render_mask = torch.where(render_pkg["rendered_alpha"] > 0.5, True, False)
-            mask = torch.logical_and(gt_mask, render_mask)
+            mask = gt_mask & render_mask & torch.isfinite(viewpoint_cam.mono_depth) & (viewpoint_cam.mono_depth > 1e-6)
             if mask.sum() < 10:
                 depth_loss = 0.0
             else:
@@ -285,7 +305,7 @@ def cal_loss(opt, args, image, render_pkg, viewpoint_cam, bg, silhouette_loss_ty
         elif mono_loss_type == "dust3r":
             gt_mask = torch.where(viewpoint_cam.mask > 0.5, True, False)
             render_mask = torch.where(render_pkg["rendered_alpha"] > 0.5, True, False)
-            mask = torch.logical_and(gt_mask, render_mask)
+            mask = gt_mask & render_mask & torch.isfinite(viewpoint_cam.mono_depth) & (viewpoint_cam.mono_depth > 1e-6)
             if mask.sum() < 10:
                 depth_loss = 0.0
             else:
@@ -333,6 +353,8 @@ if __name__ == "__main__":
     parser.add_argument('--use_dust3r', action='store_true', default=False,
                         help='use dust3r estimated poses')
     parser.add_argument('--dust3r_json', type=str, default=None)
+    parser.add_argument('--skip_render_cameras', action='store_true',
+                        help='Do not allocate unused legacy path cameras during training')
     parser.add_argument("--init_pcd_name", default='origin', type=str, 
                         help="the init pcd name. 'random' for random, 'origin' for pcd from the whole scene")
     parser.add_argument("--transform_the_world", action="store_true", help="Transform the world to the origin")

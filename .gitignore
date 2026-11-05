@@ -10,3 +10,11 @@ data/*
 
 v1-5-pruned.ckpt
 *.pth
+
+# Local offline artifacts and compositing renders
+.venv/
+venv/
+wheelhouse/
+*.whl
+*.tar.gz
+renders*/

@@ -85,8 +85,8 @@ def get_loss_tracking(image, opacity, viewpoint):
     gt_image = viewpoint.original_image.cuda()
     _, h, w = gt_image.shape
     mask_shape = (1, h, w)
-    rgb_boundary_threshold = 0.01
-    rgb_pixel_mask = (gt_image.sum(dim=0) > rgb_boundary_threshold).view(*mask_shape)
+    # Foreground membership comes from SAM, including completely black tires.
+    rgb_pixel_mask = (viewpoint.mask > 0.5).view(*mask_shape) if viewpoint.mask is not None else torch.ones(mask_shape, dtype=torch.bool, device=gt_image.device)
     # rgb_pixel_mask = rgb_pixel_mask * viewpoint.grad_mask
     l1 = opacity * torch.abs(image * rgb_pixel_mask - gt_image * rgb_pixel_mask)
     return l1.mean()

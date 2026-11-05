@@ -12,7 +12,6 @@
 import torch
 import math
 from diff_gaussian_rasterization import GaussianRasterizationSettings, GaussianRasterizer
-from diff_gaussian_rasterization_w_pose import GaussianRasterizationSettings as GaussianRasterizationSettings_w_pose, GaussianRasterizer as GaussianRasterizer_w_pose
 from scene.gaussian_model import GaussianModel
 from utils.sh_utils import eval_sh
 
@@ -109,6 +108,8 @@ def render_w_pose(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch.T
     
     Background tensor (bg_color) must be on GPU!
     """
+    # Basic inference does not need the optional pose-optimization extension.
+    from diff_gaussian_rasterization_w_pose import GaussianRasterizationSettings as GaussianRasterizationSettings_w_pose, GaussianRasterizer as GaussianRasterizer_w_pose
  
     # Create zero tensor. We will use it to make pytorch return gradients of the 2D (screen-space) means
     screenspace_points = torch.zeros_like(pc.get_xyz, dtype=pc.get_xyz.dtype, requires_grad=True, device="cuda") + 0

@@ -14,7 +14,10 @@ from dust3r.utils.geometry import depthmap_to_pts3d, geotrf
 
 def load_model(model_path, device):
     print('... loading model from', model_path)
-    ckpt = torch.load(model_path, map_location='cpu')
+    # Official DUSt3R checkpoints contain model configuration objects, not just
+    # tensor state dicts. PyTorch >=2.6 defaults to weights_only=True. Load only
+    # trusted local checkpoints supplied with the offline bundle.
+    ckpt = torch.load(model_path, map_location='cpu', weights_only=False)
     args = ckpt['args'].model.replace("ManyAR_PatchEmbed", "PatchEmbedDust3R")
     if 'landscape_only' not in args:
         args = args[:-1] + ', landscape_only=False)'
