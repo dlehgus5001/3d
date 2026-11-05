@@ -24,6 +24,40 @@ else:
 
 @unittest.skipUnless(CUDA_AVAILABLE, 'CUDA-enabled PyTorch/GPU unavailable; actual rasterization not executed')
 class NativeOpacityGpuSmoke(unittest.TestCase):
+    def test_pose_refinement_silhouette_has_nonzero_opacity_gradient(self):
+        from types import SimpleNamespace
+        from scene.gaussian_model import GaussianModel
+        from scene.cameras import MiniCam
+        from gaussian_renderer import render, render_w_pose
+        from utils.graphics_utils import getProjectionMatrix
+        from utils.sh_utils import RGB2SH
+        from scripts.truck_render_utils import orbit_camera
+        from truck_pipeline.training_render import render_training_view, silhouette_loss
+
+        gaussian = GaussianModel(0)
+        gaussian._xyz = torch.zeros((1, 3), device='cuda', requires_grad=True)
+        gaussian._features_dc = RGB2SH(torch.zeros((1, 3), device='cuda'))[:, None, :].requires_grad_()
+        gaussian._features_rest = torch.empty((1, 0, 3), device='cuda', requires_grad=True)
+        gaussian._scaling = torch.full((1, 3), float(np.log(.15)), device='cuda', requires_grad=True)
+        gaussian._rotation = torch.tensor([[1., 0, 0, 0]], device='cuda', requires_grad=True)
+        gaussian._opacity = torch.zeros((1, 1), device='cuda', requires_grad=True)
+        c2w = orbit_camera(np.zeros(3), *np.eye(3), 3, 0, 45)
+        view = torch.tensor(np.linalg.inv(c2w).T.copy(), dtype=torch.float32, device='cuda')
+        fov = float(np.radians(60))
+        projection = getProjectionMatrix(.01, 100., fov, fov).T.cuda()
+        camera = MiniCam(64, 64, fov, fov, .01, 100., view, view @ projection)
+        camera.cam_rot_delta = torch.zeros(3, device='cuda', requires_grad=True)
+        camera.cam_trans_delta = torch.zeros(3, device='cuda', requires_grad=True)
+        pipe = SimpleNamespace(debug=False, compute_cov3D_python=False, convert_SHs_python=False)
+        package = render_training_view(camera, gaussian, pipe, torch.zeros(3, device='cuda'),
+            refine_pose=True, need_silhouette=True, render_fixed=render, render_pose=render_w_pose)
+        self.assertTrue(torch.isfinite(package['silhouette_alpha']).all())
+        target = (package['silhouette_alpha'].detach() > .01).float()
+        silhouette_loss(package, target).backward()
+        self.assertIsNotNone(gaussian._opacity.grad)
+        self.assertTrue(torch.isfinite(gaussian._opacity.grad).all())
+        self.assertGreater(float(gaussian._opacity.grad.abs().sum()), 0)
+
     def test_saved_black_gaussian_orbit_rgba(self):
         # Missing/broken CUDA extensions on a GPU host must fail, not be skipped.
         from scene.gaussian_model import GaussianModel

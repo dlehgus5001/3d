@@ -8,10 +8,24 @@ from PIL import Image
 
 from scripts.truck_render_utils import (alpha_bounds, azimuths, elevation_directory,
     infer_orbit_frame, orbit_camera, rgba_from_accumulated, safe_radius)
-from scripts.render_truck import select_ply, read_cameras
+from scripts.render_truck import select_ply, read_cameras, validate_output_paths
 
 
 class TruckRenderTests(unittest.TestCase):
+    def test_overwrite_cannot_mix_stale_frames_into_new_sequence(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary)
+            first = output / 'elev_040/0001.png'
+            second = output / 'elev_040/0002.png'
+            first.parent.mkdir()
+            first.touch()
+            second.touch()
+            with self.assertRaisesRegex(ValueError, 'outside this sequence'):
+                validate_output_paths(output, [first], overwrite=True)
+            validate_output_paths(output, [first, second], overwrite=True)
+            with self.assertRaisesRegex(ValueError, 'already exists'):
+                validate_output_paths(output, [first, second])
+
     def test_orbit_angles_exclude_duplicate_endpoint(self):
         angles = azimuths(12, 120)
         self.assertEqual(len(set(angles)), 120)

@@ -26,6 +26,8 @@ if compgen -G "$bundle_dir/wheelhouse/curope-*.whl" >/dev/null; then
     python -m pip install --no-index --find-links "$bundle_dir/wheelhouse" curope
 fi
 cd -- "$repo_dir"
+python scripts/check_dust3r_checkpoint.py \
+    --checkpoint models/DUSt3R_ViTLarge_BaseDecoder_512_dpt.pth --device cuda
 python - <<'PY'
 from pathlib import Path
 import torch

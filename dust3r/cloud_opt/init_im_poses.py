@@ -154,6 +154,7 @@ def minimum_spanning_tree(imshapes, edges, pred_i, pred_j, conf_i, conf_j, im_co
     while todo:
         # each time, predict the next one
         score, i, j = todo.pop()
+        i_j = edge_str(i, j)
 
         if im_focals[i] is None:
             im_focals[i] = estimate_focal(pred_i[i_j])

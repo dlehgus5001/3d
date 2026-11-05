@@ -51,24 +51,15 @@ if not torch.cuda.is_available():
     raise SystemExit('Use an online NVIDIA GPU build host to validate the CUDA extension wheels before transfer.')
 print('Build GPU:', torch.cuda.get_device_name(0))
 PY
+python "$repo_dir/scripts/check_dust3r_checkpoint.py" --checkpoint "$checkpoint" --device cuda
 export MAX_JOBS="${MAX_JOBS:-4}"
 export FORCE_CUDA=1
 staging_dir="$(mktemp -d)"
 trap 'rm -rf -- "$staging_dir"' EXIT
 # The upstream pose fork uses the base rasterizer's package name. Stage a
 # distinct distribution/package so installation cannot overwrite the base one.
-python - "$repo_dir" "$staging_dir" <<'PY'
-from pathlib import Path
-import shutil, sys
-repo, staging = map(Path, sys.argv[1:])
-pose = staging / 'pose-rasterizer'
-shutil.copytree(repo / 'submodules/diff-gaussian-rasterization-w-pose', pose,
-                ignore=shutil.ignore_patterns('.git', 'build', '*.egg-info', '__pycache__'))
-old, new = 'diff_gaussian_rasterization', 'diff_gaussian_rasterization_w_pose'
-(pose / old).rename(pose / new)
-setup = pose / 'setup.py'
-setup.write_text(setup.read_text().replace(old, new))
-PY
+python "$repo_dir/scripts/stage_pose_rasterizer.py" \
+    "$repo_dir/submodules/diff-gaussian-rasterization-w-pose" "$staging_dir/pose-rasterizer"
 for source in "$repo_dir/submodules/diff-gaussian-rasterization" \
               "$staging_dir/pose-rasterizer" \
               "$repo_dir/submodules/simple-knn" \
@@ -84,7 +75,16 @@ python -m pip install --no-index --find-links "$bundle_dir/wheelhouse" \
     diff-gaussian-rasterization diff-gaussian-rasterization-w-pose simple-knn pytorch3d
 if [[ "${BUILD_CUROPE:-0}" == 1 ]]; then
     python -m pip install --no-index --find-links "$bundle_dir/wheelhouse" curope
+    python "$repo_dir/scripts/check_dust3r_checkpoint.py" --checkpoint "$checkpoint" --device cuda
 fi
+# Resolve as though nothing is installed, so a developer's existing packages
+# cannot conceal a missing wheel in the transfer bundle.
+python -m pip install --dry-run --ignore-installed --no-index \
+    --find-links "$bundle_dir/wheelhouse" \
+    --report "$bundle_dir/offline_resolution.json" \
+    'torch==2.8.0+cu129' 'torchvision==0.23.0+cu129' \
+    -r "$repo_dir/requirements-truck.txt" \
+    diff-gaussian-rasterization diff-gaussian-rasterization-w-pose simple-knn pytorch3d
 python - <<'PY'
 import torch
 import diff_gaussian_rasterization, diff_gaussian_rasterization_w_pose
@@ -105,7 +105,7 @@ PY
 )
 python - "$repo_dir" "$bundle_dir" "$checkpoint" <<'PY'
 from pathlib import Path
-import hashlib, json, platform, shutil, subprocess, sys
+import hashlib, importlib.metadata, json, platform, shutil, subprocess, sys
 repo, bundle, checkpoint = map(Path, sys.argv[1:])
 ignore = shutil.ignore_patterns('.git', '__pycache__', '*.pyc', '.venv', 'venv',
                                'output', 'build', 'dist', '*.egg-info', '.cache',
@@ -119,7 +119,11 @@ metadata = {
     'git_commit': subprocess.check_output(['git','-C',str(repo),'rev-parse','HEAD'],text=True).strip(),
     'submodules': subprocess.check_output(['git','-C',str(repo),'submodule','status','--recursive'],text=True).splitlines(),
     'cuda_arch_list': __import__('os').environ['TORCH_CUDA_ARCH_LIST'],
-    'packages': subprocess.check_output([sys.executable,'-m','pip','freeze'],text=True).splitlines(),
+    'source_changes': subprocess.check_output(['git','-C',str(repo),'status','--porcelain'],text=True).splitlines(),
+    # Distribution names/versions are sufficient for provenance. pip freeze can
+    # include credential-bearing direct-install URLs from a developer's env.
+    'packages': sorted(f'{d.metadata.get("Name", "unknown")}=={d.version}'
+                       for d in importlib.metadata.distributions()),
     'note': 'System NVIDIA driver, ffmpeg/ffprobe, and Python 3.12 are external prerequisites.'
 }
 (bundle / 'build_metadata.json').write_text(json.dumps(metadata, indent=2))

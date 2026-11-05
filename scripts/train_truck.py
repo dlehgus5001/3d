@@ -2,7 +2,6 @@
 """Validate SAM masks, estimate DUSt3R poses, then train the existing 3DGS path."""
 import argparse
 import json
-import os
 from pathlib import Path
 import shlex
 import subprocess
@@ -95,9 +94,15 @@ def main():
     ply = output / 'point_cloud' / f'iteration_{args.iterations}' / 'point_cloud.ply'
     if not ply.is_file() or ply.stat().st_size == 0:
         raise RuntimeError(f'Training exited without saved model: {ply}')
+    checkpoint = output / f'ckpt{args.iterations}.pth'
+    if not checkpoint.is_file() or checkpoint.stat().st_size == 0:
+        raise RuntimeError(f'Training exited without saved checkpoint: {checkpoint}')
     metadata = json.loads((output / 'truck_metadata.json').read_text())
     if metadata['training_frame_count'] != args.frames or set(metadata['training_frame_names']) != {Path(n).stem for n in selection['filenames']}:
         raise RuntimeError('Actual training cameras differ from selection; inspect training_frames.json')
+    visits = metadata.get('frame_visit_counts', {})
+    if set(visits) != set(metadata['training_frame_names']) or any(v < 1 for v in visits.values()) or sum(visits.values()) != args.iterations:
+        raise RuntimeError('Some selected training views were not used or visit counts differ from iterations')
     print(f'Trained model saved: {ply}\nRender independently with scripts/render_truck.py --model-path {output}')
 
 

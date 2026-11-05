@@ -70,15 +70,14 @@ def loadCam(args,
 
     gt_image = resized_image_rgb[:3, ...]
 
-    if resized_image_rgb.shape[1] == 4:
+    loaded_mask = None
+    if resized_image_rgb.shape[0] == 4:
         loaded_mask = resized_image_rgb[3:4, ...]
 
     # use masked image to train
     if cam_info.mask is not None:
         resized_mask = resize_mask_image(cam_info.mask, resolution)
         loaded_mask = torch.from_numpy(resized_mask).unsqueeze(0)
-    else:
-        loaded_mask = None
 
     ### we load depth here for acceleration
     mono_depth = None
@@ -104,13 +103,13 @@ def loadCam(args,
                       FoVx=cam_info.FovX, FoVy=cam_info.FovY, 
                       image=gt_image, gt_alpha_mask=loaded_mask, mono_depth=mono_depth,
                       image_name=cam_info.image_name, uid=id, 
-                      data_device=args.data_device, white_background=args.white_background)
+                      data_device=args.data_device, white_background=args.white_background, confidence=confidence)
     else:
         return Camera(colmap_id=cam_info.uid, R=cam_info.R, T=cam_info.T, 
                       FoVx=cam_info.FovX, FoVy=cam_info.FovY, 
                       image=gt_image, gt_alpha_mask=loaded_mask, mono_depth=mono_depth,
                       image_name=cam_info.image_name, uid=id, 
-                      data_device=args.data_device, white_background=args.white_background)
+                      data_device=args.data_device, white_background=args.white_background, confidence=confidence)
 
 def cameraList_from_camInfos(cam_infos, resolution_scale, args, mode="test"):
     camera_list = []

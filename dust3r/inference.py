@@ -27,7 +27,7 @@ def load_model(model_path, device):
     print(f"instantiating : {args}")
     net = eval(args)
     print(net.load_state_dict(ckpt['model'], strict=False))
-    return net.to(device)
+    return net.to(device).eval()
 
 
 def _interleave_imgs(img1, img2):

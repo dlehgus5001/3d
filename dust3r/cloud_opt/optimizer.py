@@ -82,12 +82,16 @@ class PointCloudOptimizer(BasePCOptimizer):
 
     def preset_focal(self, known_focals, msk=None):
         self._check_all_imgs_are_selected(msk)
-
-        for idx, focal in zip(self._get_msk_indices(msk), known_focals):
-            print(f' (setting focal #{idx} = {focal})')
-            self._no_grad(self._set_focal(idx, focal))
-
-        self.im_focals.requires_grad_(False)
+        # GaussianObject optimizes one focal shared by every input frame.
+        # The inherited per-frame preset API still referenced removed
+        # ``im_focals`` parameters and passed an index to the shared setter.
+        values = np.asarray(to_numpy(known_focals), dtype=np.float64).reshape(-1)
+        if len(values) != self.n_imgs or not np.isfinite(values).all() or np.any(values <= 0):
+            raise ValueError('Provide one positive finite focal for each frame')
+        if not np.allclose(values, values[0], rtol=1e-5, atol=1e-5):
+            raise ValueError('This camera model shares one focal; known focals must agree')
+        self._no_grad(self._set_focal(float(values[0])))
+        self.im_focal.requires_grad_(False)
 
     def preset_principal_point(self, known_pp, msk=None):
         self._check_all_imgs_are_selected(msk)
@@ -99,6 +103,8 @@ class PointCloudOptimizer(BasePCOptimizer):
         self.im_pp.requires_grad_(False)
 
     def _get_msk_indices(self, msk):
+        if isinstance(msk, torch.Tensor):
+            msk = to_numpy(msk)
         if msk is None:
             return range(self.n_imgs)
         elif isinstance(msk, int):
@@ -107,7 +113,7 @@ class PointCloudOptimizer(BasePCOptimizer):
             return self._get_msk_indices(np.array(msk))
         elif msk.dtype in (bool, torch.bool, np.bool_):
             assert len(msk) == self.n_imgs
-            return np.cumsum([0] + msk.tolist())
+            return np.flatnonzero(to_numpy(msk))
         elif np.issubdtype(msk.dtype, np.integer):
             return msk
         else:
@@ -122,9 +128,10 @@ class PointCloudOptimizer(BasePCOptimizer):
     #         param.data[:] = self.focal_break * np.log(focal)
     #     return param
 
-    def _set_focal(self, focal):
+    def _set_focal(self, focal, force=False):
         param = self.im_focal
-        param.data[:] = self.focal_break * np.log(focal)
+        if param.requires_grad or force:
+            param.data[:] = self.focal_break * np.log(focal)
         return param
 
     def get_focals(self):
@@ -133,8 +140,8 @@ class PointCloudOptimizer(BasePCOptimizer):
         return (log_focals / self.focal_break).exp()
 
     def get_known_focal_mask(self):
-        # return torch.tensor([not (p.requires_grad) for p in self.im_focals])
-        return torch.tensor([not (self.im_focal.requires_grad) * len(self.imshapes)])
+        return torch.full((self.n_imgs,), not self.im_focal.requires_grad,
+                          dtype=torch.bool, device=self.device)
 
     def _set_principal_point(self, idx, pp, force=False):
         param = self.im_pp[idx]

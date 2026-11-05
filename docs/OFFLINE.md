@@ -22,6 +22,14 @@ GPU의 compute capability에 맞는 `TORCH_CUDA_ARCH_LIST`를 설정합니다. �
 
 ## 온라인 머신에서 반입 자료 만들기
 
+온라인 빌드 머신에는 `pypi.org`, `files.pythonhosted.org`,
+`download.pytorch.org`, `download-r2.pytorch.org`, **`pypi.nvidia.com`**으로의 HTTPS 접근이 필요합니다.
+공식 PyTorch cu129 인덱스가 CUDA 라이브러리 wheel을 `pypi.nvidia.com`으로 연결하므로
+PyTorch 사이트만 허용하면 설치가 중간에 중단될 수 있습니다.
+소스 반입에는 `github.com`과 GitHub의 자산 호스트, DUSt3R 가중치 반입에는
+`download.europe.naverlabs.com`도 필요합니다. 이 네트워크 접근은 온라인 준비에만 사용합니다.
+폐쇄망 설치와 실행은 로컬 파일만 사용합니다.
+
 저장소와 **고정 커밋의 필수 서브모듈**을 먼저 준비합니다. 폐쇄망에서 `git submodule update`를 실행할 필요가 없도록 소스까지 묶습니다.
 
 ```bash
@@ -94,6 +102,7 @@ truck-offline-bundle/
     scripts/install_offline.sh
   wheelhouse/            # 런타임 전이 의존성과 대상 GPU용 CUDA 확장 wheel
   build_metadata.json    # Python/플랫폼/패키지/소스 커밋/컴파일 아키텍처
+  offline_resolution.json # 설치된 패키지를 무시한 로컬 wheel 의존성 해석 결과
   SHA256SUMS
 ```
 
@@ -124,7 +133,13 @@ export TRANSFORMERS_OFFLINE=1
 `models/download_hf_models.py`, `models/download_preprocess_models.sh`, `preprocess/pred_monodepth.py`는 기본 경로에서 실행하지 않습니다. 이들은 추가 모델 다운로드를 할 수 있습니다.
 `train_repair.py` 및 LoRA/Repair는 선택적인 별도 프로젝트 단계이며 이 번들의 완료 기준에 포함하지 않습니다.
 
-준비·설치 스크립트는 CUDA KNN 연산, 모듈 import, 실제 rasterizer로 합성 검은 Gaussian의 PLY 저장/재로딩·RGBA 렌더링, 소형 합성 데이터의 자세 미세 조정 학습을 검사합니다 (`tests/test_truck*gpu.py`). 이 GPU 검사들은 하나라도 스킵되거나 실패하면 번들 준비/설치를 성공 처리하지 않습니다. 합성 데이터 검사는 실제 트럭 재구성 품질을 검증하지 않습니다.
+준비·설치 스크립트는 **반입할 실제 DUSt3R 체크포인트 로딩과 한 쌍의 합성 이미지 forward**,
+CUDA KNN 연산, 모듈 import, 실제 rasterizer로 합성 검은 Gaussian의 PLY 저장/재로딩·RGBA 렌더링,
+소형 합성 데이터의 자세 미세 조정 학습을 검사합니다 (`tests/test_truck*gpu.py`).
+이 GPU 검사들은 하나라도 스킵되거나 실패하면 번들 준비/설치를 성공 처리하지 않습니다.
+합성 이미지 forward는 모델 파일의 손상·런타임 불일치를 확인하지만 실제 트럭 자세의 정확도를 검증하지 않습니다.
+번들 생성 시 현재 빌드 가상환경에 설치된 패키지를 무시하고 `--no-index`로 wheel 전체 의존성을 다시 해석하므로
+기존 패키지가 빠진 wheel을 가리는 경우도 검사합니다.
 실제 데이터에서 DUSt3R 정합, Gaussian 학습, 저장 모델 재로딩, 소수 시점 RGBA 렌더링과 알파/잘림 검사를 통과한 뒤 전체 시퀀스를 만드십시오.
 CPU 클라우드의 단위 테스트 결과를 GPU 학습/렌더링 성공으로 해석하지 마십시오.
 

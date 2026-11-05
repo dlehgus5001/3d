@@ -42,14 +42,51 @@ def check_pose_artifacts(data_dir, selection):
     root = Path(data_dir)
     n = selection['count']
     cameras = json.loads((root / f'dust3r_{n}.json').read_text())
+    if not isinstance(cameras, list) or any(not isinstance(c, dict) or 'img_name' not in c for c in cameras):
+        raise ValueError('Pose camera JSON must contain a list of camera records')
     names = [c['img_name'] for c in cameras]
     if names != selection['filenames']:
         raise ValueError(f'Pose filenames/order differ from selected frames: {names}')
+    for index, (camera, record) in enumerate(zip(cameras, selection['frames'])):
+        name = record['filename']
+        try:
+            rotation = np.asarray(camera['rotation'], dtype=float)
+            position = np.asarray(camera['position'], dtype=float)
+            focal = np.asarray([camera['fx'], camera['fy']], dtype=float)
+            valid = (camera['id'] == index and camera['width'] == record['width']
+                     and camera['height'] == record['height'] and rotation.shape == (3, 3)
+                     and position.shape == (3,) and np.isfinite(rotation).all()
+                     and np.isfinite(position).all() and np.isfinite(focal).all() and np.all(focal > 0))
+            if not valid or not np.allclose(rotation.T @ rotation, np.eye(3), atol=1e-3) or not np.isclose(np.linalg.det(rotation), 1, atol=1e-3):
+                raise ValueError('invalid fields')
+            if not np.isclose(camera.get('cx', record['width'] / 2), record['width'] / 2) or not np.isclose(camera.get('cy', record['height'] / 2), record['height'] / 2):
+                raise ValueError('off-center intrinsics are not supported by the training camera')
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError(f'{name}: invalid camera id/resolution/rotation/position/focal: {exc}') from exc
+    if np.ptp(np.asarray([c['position'] for c in cameras]), axis=0).max() < 1e-6:
+        raise ValueError('Pose camera centers are degenerate: no camera baseline')
+    indices_path = root / f'sparse_{n}.txt'
+    ids = np.atleast_1d(np.loadtxt(indices_path, dtype=np.int64))
+    if ids.tolist() != selection['indices']:
+        raise ValueError('sparse_N.txt indices differ from selected frames; rerun poses')
     for key in (f'dust3r_{n}.ply', f'dust3r_depth_{n}.npy', f'dust3r_confidence_{n}.npy'):
         if not (root / key).is_file() or (root / key).stat().st_size == 0:
             raise ValueError(f'Missing or empty pose artifact: {key}')
+    shape = None
     for key in ('depth', 'confidence'):
         array = np.load(root / f'dust3r_{key}_{n}.npy', mmap_mode='r')
-        if len(array) != n or not np.isfinite(array).all():
+        if array.ndim != 3 or array.shape[0] != n or min(array.shape[1:]) < 1 or not np.isfinite(array).all() or np.any(array < 0) or not np.all(np.any(array > 0, axis=(1, 2))):
             raise ValueError(f'Invalid {key} array: expected {n} finite maps')
+        if shape is not None and array.shape != shape:
+            raise ValueError('Depth/confidence map shapes differ')
+        shape = array.shape
+    from plyfile import PlyData
+    try:
+        vertices = PlyData.read(root / f'dust3r_{n}.ply')['vertex']
+        xyz = np.column_stack([vertices[key] for key in ('x', 'y', 'z')])
+        colors = np.column_stack([vertices[key] for key in ('red', 'green', 'blue')])
+        if len(xyz) < 16 or not np.isfinite(xyz).all() or np.ptp(xyz, axis=0).max() < 1e-8 or np.any(colors < 0) or np.any(colors > 255):
+            raise ValueError('need >=16 finite, nondegenerate colored points')
+    except (ValueError, KeyError, TypeError) as exc:
+        raise ValueError(f'Invalid initial PLY: {exc}') from exc
     return cameras

@@ -10,6 +10,7 @@ import numpy as np
 from PIL import Image
 
 from truck_pipeline.workflow import check_pose_artifacts, select_frames, write_json
+from truck_pipeline.pose_geometry import write_rgb_ply
 
 
 class WorkflowTests(unittest.TestCase):
@@ -30,8 +31,12 @@ class WorkflowTests(unittest.TestCase):
 
     def artifacts(self, selection):
         n = selection["count"]
-        write_json(self.root / f"dust3r_{n}.json", [{"img_name": name} for name in selection["filenames"]])
-        (self.root / f"dust3r_{n}.ply").write_text("ply\nformat ascii 1.0\nelement vertex 0\nend_header\n")
+        write_json(self.root / f"dust3r_{n}.json", [dict(img_name=name, id=i, width=24, height=16,
+                   fx=24., fy=24., rotation=np.eye(3).tolist(), position=[float(i), 0., -3.])
+                   for i, name in enumerate(selection["filenames"])])
+        write_rgb_ply(self.root / f"dust3r_{n}.ply", np.arange(60).reshape(20, 3) / 100,
+                      np.ones((20, 3)) * .2)
+        (self.root / f'sparse_{n}.txt').write_text(''.join(f'{i}\n' for i in selection['indices']))
         for kind in ("depth", "confidence"):
             np.save(self.root / f"dust3r_{kind}_{n}.npy", np.ones((n, 4, 6), np.float32))
 
@@ -111,6 +116,37 @@ class WorkflowTests(unittest.TestCase):
         self.artifacts(selection)
         np.save(self.root / "dust3r_confidence_50.npy", np.ones((49, 4, 6)))
         with self.assertRaisesRegex(ValueError, "Invalid confidence"):
+            check_pose_artifacts(self.root, selection)
+
+    def test_pose_artifacts_reject_invalid_camera_empty_cloud_and_stale_indices(self):
+        selection = select_frames(self.root, 50)
+        for update in [{'fx': 0}, {'position': [float('nan'), 0, 0]}, {'width': 23},
+                       {'rotation': np.zeros((3,3)).tolist()}, {'id': 99}]:
+            self.artifacts(selection)
+            cameras = json.loads((self.root/'dust3r_50.json').read_text())
+            cameras[7].update(update)
+            write_json(self.root/'dust3r_50.json', cameras)
+            with self.assertRaisesRegex(ValueError, '0008.png: invalid camera'):
+                check_pose_artifacts(self.root, selection)
+        self.artifacts(selection)
+        write_rgb_ply(self.root/'dust3r_50.ply', [], [])
+        with self.assertRaisesRegex(ValueError, 'Invalid initial PLY'):
+            check_pose_artifacts(self.root, selection)
+        self.artifacts(selection)
+        (self.root/'sparse_50.txt').write_text('0\n1\n')
+        with self.assertRaisesRegex(ValueError, 'indices differ'):
+            check_pose_artifacts(self.root, selection)
+
+    def test_pose_artifacts_reject_wrong_rank_zero_depth_and_inconsistent_map_shapes(self):
+        selection = select_frames(self.root, 50)
+        for value in [np.ones((50,24)), np.zeros((50,4,6)), -np.ones((50,4,6))]:
+            self.artifacts(selection)
+            np.save(self.root/'dust3r_depth_50.npy', value)
+            with self.assertRaisesRegex(ValueError, 'Invalid depth'):
+                check_pose_artifacts(self.root, selection)
+        self.artifacts(selection)
+        np.save(self.root/'dust3r_confidence_50.npy', np.ones((50,6,4)))
+        with self.assertRaisesRegex(ValueError, 'map shapes differ'):
             check_pose_artifacts(self.root, selection)
 
 

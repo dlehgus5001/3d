@@ -87,6 +87,17 @@ def read_cameras(model_path, explicit=None):
     return data
 
 
+def validate_output_paths(output, planned_paths, overwrite=False):
+    manifests = [output / 'views.csv', output / 'render_config.json']
+    if not overwrite and any(path.exists() for path in planned_paths + manifests):
+        raise ValueError('Output already exists; choose another --output or pass --overwrite')
+    # Changing frame count/elevations must not leave a mixture of old and new
+    # PNGs that disagrees with the current manifest. Never delete user files.
+    stale = sorted(set(output.rglob('*.png')) - set(planned_paths)) if output.exists() else []
+    if stale:
+        raise ValueError(f'Output contains PNGs outside this sequence (for example {stale[0]}); choose a fresh --output')
+
+
 def main(argv=None):
     args = parser().parse_args(argv)
     try:
@@ -104,6 +115,8 @@ def main(argv=None):
         inferred_degree = int(round(math.sqrt(rest_count / 3 + 1) - 1))
         if 3 * (inferred_degree + 1) ** 2 - 3 != rest_count:
             raise ValueError('PLY SH coefficients do not describe a supported Gaussian model')
+        if not 0 <= inferred_degree <= 3:
+            raise ValueError('CUDA renderer supports Gaussian SH degrees 0 through 3')
         sh_degree = args.sh_degree if args.sh_degree is not None else inferred_degree
         if sh_degree != inferred_degree:
             raise ValueError(f'--sh-degree {sh_degree} disagrees with PLY degree {inferred_degree}')
@@ -122,7 +135,7 @@ def main(argv=None):
             raise ValueError('Elevations must be finite degrees in [0,90]; use --up-vector for an inverted inferred frame')
         if len({elevation_directory(e) for e in elevations}) != len(elevations):
             raise ValueError('Duplicate elevations/output directories')
-        fov_y = math.radians(args.fov_y) if args.fov_y else float(np.median([2 * np.arctan(c['height'] / (2 * c['fy'])) for c in cameras]))
+        fov_y = math.radians(args.fov_y) if args.fov_y is not None else float(np.median([2 * np.arctan(c['height'] / (2 * c['fy'])) for c in cameras]))
         if not 0 < fov_y < math.pi:
             raise ValueError('Invalid vertical field of view')
         fov_x = 2 * math.atan(math.tan(fov_y / 2) * args.width / args.height)
@@ -132,9 +145,7 @@ def main(argv=None):
         if not np.isfinite(radius) or radius < minimum_radius:
             raise ValueError(f'Orbit radius must be >= {minimum_radius:.5g} to fit Gaussian bounds')
         planned_paths = [args.output / elevation_directory(e) / f'{i:04d}.png' for e in elevations for i in range(1, args.frames_per_elevation + 1)]
-        manifests = [args.output / 'views.csv', args.output / 'render_config.json']
-        if not args.overwrite and any(p.exists() for p in planned_paths + manifests):
-            raise ValueError('Output already exists; choose another --output or pass --overwrite')
+        validate_output_paths(args.output, planned_paths, args.overwrite)
         import torch
         if not torch.cuda.is_available():
             raise ValueError('RGBA Gaussian rendering requires a CUDA GPU')

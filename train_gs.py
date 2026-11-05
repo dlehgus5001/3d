@@ -30,14 +30,17 @@ from utils.image_utils import psnr
 from utils.loss_utils import l1_loss, ssim, monodisp
 from utils.pose_utils import update_pose, get_loss_tracking
 from torch.utils.tensorboard.writer import SummaryWriter
+from truck_pipeline.training_render import render_training_view, silhouette_loss
 TENSORBOARD_FOUND = True
 
 def training(args, dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from):
+    from gaussian_renderer import render as render_fixed
     if args.use_dust3r:
         print('Use pose refinement from dust3r')
-        from gaussian_renderer import render_w_pose as render
+        from gaussian_renderer import render_w_pose as render_pose
     else:
-        from gaussian_renderer import render
+        render_pose = None
+    render = render_fixed
 
     first_iter = 0
     tb_writer = prepare_output_and_logger(dataset)
@@ -92,7 +95,8 @@ def training(args, dataset, opt, pipe, testing_iterations, saving_iterations, ch
         viewpoint_cam = viewpoint_stack.pop(randint(0, len(viewpoint_stack)-1))
         frame_visits[viewpoint_cam.image_name] += 1
 
-        if args.use_dust3r:
+        refine_pose = args.use_dust3r and iteration < opt.pose_iterations
+        if refine_pose:
             pose_opt_params = [
                 {
                     "params": [viewpoint_cam.cam_rot_delta],
@@ -113,7 +117,11 @@ def training(args, dataset, opt, pipe, testing_iterations, saving_iterations, ch
 
         bg = torch.rand((3), device="cuda") if opt.random_background else background
 
-        render_pkg = render(viewpoint_cam, gaussians, pipe, bg)
+        render = render_pose if refine_pose else render_fixed
+        render_pkg = render_training_view(
+            viewpoint_cam, gaussians, pipe, bg, refine_pose=refine_pose,
+            need_silhouette=args.use_mask and opt.lambda_silhouette > 0,
+            render_fixed=render_fixed, render_pose=render_pose)
         image, viewspace_point_tensor, visibility_filter, radii = render_pkg["render"], \
             render_pkg["viewspace_points"], render_pkg["visibility_filter"], render_pkg["radii"]
 
@@ -159,7 +167,7 @@ def training(args, dataset, opt, pipe, testing_iterations, saving_iterations, ch
             if iteration < opt.iterations:
                 gaussians.optimizer.step()
                 gaussians.optimizer.zero_grad(set_to_none = True)
-                if args.use_dust3r and iteration < opt.pose_iterations:
+                if refine_pose:
                     pose_optimizer.step()
                     pose_optimizer.zero_grad(set_to_none = True)
                     _ = update_pose(viewpoint_cam)
@@ -276,15 +284,10 @@ def cal_loss(opt, args, image, render_pkg, viewpoint_cam, bg, silhouette_loss_ty
         tb_writer.add_scalar('loss/ssim_loss', Lssim, iteration)
 
     if hasattr(args, "use_mask") and args.use_mask:
-        if silhouette_loss_type == "bce":
-            silhouette_loss = F.binary_cross_entropy(render_pkg["rendered_alpha"], viewpoint_cam.mask)
-        elif silhouette_loss_type == "mse":
-            silhouette_loss = F.mse_loss(render_pkg["rendered_alpha"], viewpoint_cam.mask)
-        else:
-            raise NotImplementedError
-        loss = loss + opt.lambda_silhouette * silhouette_loss
+        mask_loss = silhouette_loss(render_pkg, viewpoint_cam.mask, silhouette_loss_type)
+        loss = loss + opt.lambda_silhouette * mask_loss
         if tb_writer is not None:
-            tb_writer.add_scalar('loss/silhouette_loss', silhouette_loss, iteration)
+            tb_writer.add_scalar('loss/silhouette_loss', mask_loss, iteration)
 
     if hasattr(viewpoint_cam, "mono_depth") and viewpoint_cam.mono_depth is not None:
         if mono_loss_type == "mid":
