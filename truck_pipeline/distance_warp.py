@@ -2,9 +2,9 @@
 import numpy as np
 
 
-def mast3r_geometry(width, height):
-    """Exact size=512, square_ok=False geometry in dust3r.utils.image.load_images."""
-    rw, rh = (round(n * 512 / max(width, height)) for n in (width, height))
+def mast3r_geometry(width, height, long_edge=512):
+    """size!=224, square_ok=False geometry in dust3r.utils.image.load_images."""
+    rw, rh = (round(n * long_edge / max(width, height)) for n in (width, height))
     cx, cy = rw // 2, rh // 2
     hw, hh = (2 * cx // 16) * 8, (2 * cy // 16) * 8
     if rw == rh:
@@ -13,7 +13,7 @@ def mast3r_geometry(width, height):
     return (rw, rh), box
 
 
-def align_depth(depth, size, camera, legacy=False, assume_center=False):
+def align_depth(depth, size, camera, legacy=False, assume_center=False, long_edge=512):
     """Return original-grid depth and principal point; never stretch a cropped depth."""
     w, h = size
     if depth.dtype.kind not in 'fiu':
@@ -21,7 +21,7 @@ def align_depth(depth, size, camera, legacy=False, assume_center=False):
     if (camera['width'], camera['height']) != (w, h):
         raise ValueError('Camera dimensions do not match RGB (check EXIF orientation)')
     if legacy:
-        resized, box = mast3r_geometry(w, h)
+        resized, box = mast3r_geometry(w, h, long_edge)
         dw, dh = box[2]-box[0], box[3]-box[1]
         if depth.size != dw * dh or (depth.ndim == 2 and depth.shape != (dh, dw)):
             raise ValueError(f'MASt3R depth must have shape {(dh, dw)} or be flattened')

@@ -10,6 +10,10 @@
 프레임별 RGB·MASt3R Z depth·내부 파라미터만으로 카메라가 후퇴한 영상을 만들려면
 [독립 프레임 거리 변환](docs/DISTANCE_WARP.md)을 참고하십시오. 객체 마스크나 3DGS 학습 없이
 원본 해상도의 RGB와 미관측 영역을 구분하는 유효 마스크를 저장합니다.
+아직 depth가 없다면 `scripts/extract_mast3r_metadata.py --images <객체별 이미지 폴더>
+--model <로컬 MASt3R 체크포인트> --output <메타정보 폴더>`로 먼저 추출하고,
+`scripts/retreat_rgb.py --metadata-dir <메타정보 폴더> --distance-factors 1 2 5 10
+--output <변환 폴더>`로 변환합니다. 여러 객체는 각각 별도 폴더로 처리합니다.
 
 ## 실행 환경과 폐쇄망 반입
 

@@ -5,6 +5,101 @@
 객체 마스크, 카메라 외부 파라미터, 다른 프레임, 통합 3D 모델, Gaussian 학습,
 사전학습 모델이나 네트워크 접속을 사용하지 않습니다. SAM3는 출력 RGB에 별도로 실행합니다.
 
+## 권장 흐름: 객체별 이미지 폴더 → 메타정보 → 거리 변환
+
+각 객체의 촬영 이미지 묶음에서 **한 번** MASt3R depth·실제 내부 파라미터를 추정하고,
+저장한 메타정보로 여러 거리 변환을 반복합니다. 객체 5개의 이미지를 서로 섞지 않습니다.
+각 폴더에는 같은 정지 객체/장면을 겹치는 시야로 촬영한 RGB가 최소 2장 있어야 합니다.
+파일 이름의 사전순으로 처리하므로 `0001.png`, `0002.png`처럼 번호를 맞추십시오.
+
+```text
+/local/objects/
+  object1/images/0001.png ...
+  object2/images/0001.png ...
+  object3/images/0001.png ...
+  object4/images/0001.png ...
+  object5/images/0001.png ...
+```
+
+메타정보 추출은 로컬 MASt3R 체크포인트와 MASt3R 실행 의존성이 필요합니다.
+기존 `requirements-truck.txt`와 PyTorch/torchvision, `submodules/croco`를 준비한 환경을 사용합니다.
+CUDA Gaussian rasterizer, 객체 마스크, SAM3, COLMAP는 필요하지 않습니다.
+아래 `.pth`는 **DUSt3R가 아닌 MASt3R** 가중치여야 합니다. 신뢰하는 출처에서 받은 로컬 파일만
+사용하십시오. 이 프로그램은 pickle 기반 체크포인트를 로드하며 모델을 자동 다운로드하지 않습니다.
+
+한 객체의 메타정보 추출:
+
+```bash
+python scripts/extract_mast3r_metadata.py \
+  --images /local/objects/object1/images \
+  --model /local/models/MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric.pth \
+  --output /local/results/object1/metadata
+```
+
+기본은 CUDA, 긴 변 512, 이웃 4개와 끝–처음 연결, coarse/refine 각각 300 iteration입니다.
+모든 입력 프레임을 사용하며 메모리 부족 시 자동으로 프레임을 줄이지 않습니다.
+`--scene-graph complete`는 모든 쌍을 사용하므로 이미지가 많으면 비용이 급격히 늘어납니다.
+CPU는 `--device cpu`로 명시할 수 있지만 공식 대형 모델은 매우 느릴 수 있습니다.
+`--image-size`와 iteration 조절은 추정 품질에 영향을 줍니다.
+
+MASt3R는 여러 프레임의 매칭·자세 정합 과정에서 내부 3D 점을 계산합니다.
+이는 depth·K 추정에 필요한 계산이며, **통합 포인트클라우드/메시를 내보내거나 3DGS를 학습하지 않습니다.**
+임시 캐시는 객체별 추정이 끝나면 제거됩니다. 추출 중 정규화된 통합 모델의 bbox를 만들거나
+depth를 bbox 스케일로 재조정하지 않습니다.
+
+```text
+/local/results/object1/metadata/
+  frames.json           # 정상 완료된 bundle 목록
+  rgb/0001.png          # 원본 해상도·배경 포함, EXIF 방향을 적용한 RGB
+  depth/0001.npy        # 같은 RGB 격자의 camera-Z; crop 바깥/무효값은 NaN
+  cameras/0001.json     # 원본 격자의 fx/fy/cx/cy, 전처리 크기/crop/K 기록
+  ...
+```
+
+RGB를 원본 해상도로 보존하고 전처리 depth를 그 격자에 대응시킵니다.
+최적화된 주점도 함께 역변환하므로 **중앙 주점 가정이 필요 없습니다.**
+프레임별 파일이므로 서로 다른 해상도도 지원합니다. `frames.json`은 전체 저장 성공 후 기록되어
+미완료 추출 결과가 정상 bundle로 사용되는 것을 막습니다. 원본 입력은 수정하지 않습니다.
+
+먼저 한 프레임의 1배 일치 확인:
+
+```bash
+python scripts/retreat_rgb.py \
+  --metadata-dir /local/results/object1/metadata \
+  --frame 0001.png --distance-factors 1 \
+  --output /local/results/object1/check_1x
+```
+
+전체 프레임 거리 변환:
+
+```bash
+python scripts/retreat_rgb.py \
+  --metadata-dir /local/results/object1/metadata \
+  --distance-factors 1 2 5 10 \
+  --output /local/results/object1/retreat
+```
+
+객체 5개를 순서대로 처리하려면 실제 폴더 이름으로 아래 목록을 바꿉니다.
+중간에 실패하면 즉시 중단합니다. 이미 메타정보를 추출했다면 루프에서 첫 명령을 빼고
+변환 명령만 실행하면 됩니다. 재실행 시에는 기존 결과를 덮어쓰지 않도록 새 출력 경로를 사용하십시오.
+
+```bash
+set -e
+for object in object1 object2 object3 object4 object5; do
+  python scripts/extract_mast3r_metadata.py \
+    --images "/local/objects/$object/images" \
+    --model /local/models/MASt3R_ViTLarge_BaseDecoder_512_catmlpdpt_metric.pth \
+    --output "/local/results/$object/metadata"
+  python scripts/retreat_rgb.py \
+    --metadata-dir "/local/results/$object/metadata" \
+    --distance-factors 1 2 5 10 \
+    --output "/local/results/$object/retreat"
+done
+```
+
+변환 단계는 MASt3R·GPU를 다시 사용하지 않습니다. 메타정보 추출과 거리 변환 모두 폐쇄망에서
+로컬 입력만 사용합니다. NumPy·Pillow만 필요한 것은 **두 번째 변환 단계**입니다.
+
 ## 기존 레포 형식과 반드시 알아야 할 제한
 
 - `pred_poses_mast3r.py`는 `scene.get_dense_pts3d()` 결과를
@@ -155,9 +250,16 @@ output/retreat_all/
 
 ```bash
 python -m unittest discover -s tests -p test_distance_warp.py -v
+python -m unittest discover -s tests -p test_frame_metadata.py -v
 ```
 
 합성 입력으로 1배 일치, Z_ref 중앙값, 서로 다른 실제 Z의 위치,
 가까운 표면 우선, 체크무늬 면적 필터, 가로/세로/정사각형 crop 및 주점 대응,
 한 장/폴더 CLI와 출력 덮어쓰기 방지를 검사합니다.
 실제 사용자 트럭 데이터의 깊이 정확도와 시각적 품질은 별도로 확인해야 합니다.
+
+메타정보 검사는 서로 다른 해상도, EXIF 방향 보정, 실제 주점 역변환, bundle 기반
+한 장/전체 변환을 포함합니다. 작은 로컬 MASt3R 모델과 합성 이미지로 실제 추론·매칭·정합,
+camera-Z/K 저장 후 1·2·5·10배 변환까지 CPU에서 실행했습니다. 테스트 가중치는 양수 Z를
+보장하도록 조정한 임의 가중치이며, 공식 사전학습 모델의 추정 정확도를 의미하지 않습니다.
+전체 회귀 테스트 결과는 63개 중 60개 통과, 기존 CUDA 검사 3개 skip입니다.
