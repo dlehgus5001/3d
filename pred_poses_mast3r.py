@@ -158,6 +158,7 @@ if __name__ == "__main__":
 
     imgs = scene.imgs
     focals = scene.get_focals()
+    principal_points = to_numpy(scene.get_principal_points())
     poses = scene.get_im_poses()
     pts3d, depths, confidences = scene.get_dense_pts3d()
 
@@ -222,6 +223,11 @@ if __name__ == "__main__":
             'img_name': os.path.basename(images[i]),
             'width': original_images[i].size[0],
             'height': original_images[i].size[1],
+            # Preserve optimized principal points on the cropped MASt3R depth grid.
+            # Unlike fx/fy below, these are deliberately NOT in original RGB pixels.
+            'cx': float(principal_points[i][0]),
+            'cy': float(principal_points[i][1]),
+            'intrinsics_grid': 'mast3r-preprocessed',
             'position': poses[i, :3, 3].tolist(),
             'rotation': poses[i, :3, :3].tolist(),
             'fy': focals[i].item() / 512 * max(original_images[i].size),

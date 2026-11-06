@@ -7,6 +7,10 @@
 기반: [GaussianObject](https://github.com/GaussianObject/GaussianObject), 가져온 커밋 `91048a5dd3f9313e5bca8ecca651bdbac5099836`.
 기존 연구/Repair 사용법은 [원본 README](docs/UPSTREAM.md)에 보존했습니다.
 
+프레임별 RGB·MASt3R Z depth·내부 파라미터만으로 카메라가 후퇴한 영상을 만들려면
+[독립 프레임 거리 변환](docs/DISTANCE_WARP.md)을 참고하십시오. 객체 마스크나 3DGS 학습 없이
+원본 해상도의 RGB와 미관측 영역을 구분하는 유효 마스크를 저장합니다.
+
 ## 실행 환경과 폐쇄망 반입
 
 사용자 `copypaste` 환경에 맞춘 기준은 **Linux / Python 3.12 / PyTorch 2.8.0+cu129 / torchvision 0.23.0+cu129 / CUDA 12.9**입니다.
