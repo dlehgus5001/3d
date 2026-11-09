@@ -68,7 +68,7 @@ def export_frames(paths, depths, intrinsics, output, image_size=512):
     return manifest
 
 
-def read_bundle(folder):
+def read_bundle(folder, frame_name=None):
     folder = Path(folder).resolve()
     manifest = json.loads((folder/'frames.json').read_text())
     if manifest.get('version') != 1 or manifest.get('layout') != 'aligned' or manifest.get('depth_semantics') != 'camera_Z':
@@ -78,11 +78,20 @@ def read_bundle(folder):
         raise ValueError('Empty metadata bundle')
     result = []
     for frame in frames:
+        rgb = (folder/frame['rgb']).resolve()
+        if not rgb.is_relative_to(folder):
+            raise ValueError(f'Invalid bundle rgb path: {frame["rgb"]}')
+        if frame_name is not None and rgb.name != frame_name:
+            continue
+        # RGB may intentionally be a subset after filtering/segmentation.
+        # Keep the manifest association: never reindex depth by remaining order.
+        if not rgb.exists():
+            continue
         files = []
         for key in ['rgb', 'depth', 'camera']:
             path = (folder/frame[key]).resolve()
             if not path.is_relative_to(folder) or not path.is_file():
-                raise ValueError(f'Invalid bundle {key} path')
+                raise ValueError(f'Invalid bundle {key} path: {frame[key]}')
             files.append(path)
         rgb, depth, camera_path = files
         camera = json.loads(camera_path.read_text())
@@ -91,4 +100,6 @@ def read_bundle(folder):
         result.append((rgb, depth, camera))
     if len({rgb.stem for rgb, _, _ in result}) != len(result):
         raise ValueError('Duplicate metadata frame names')
+    if not result:
+        raise ValueError('No matching RGB files remain in the metadata bundle')
     return result

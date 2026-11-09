@@ -67,6 +67,36 @@ class FrameMetadataTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'exists'):
                 export_frames(paths, depths, intrinsics, metadata)
 
+    def test_rgb_subset_keeps_matching_depth_and_ignores_removed_frames(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            paths = [root/f'{i:04d}.png' for i in range(1, 4)]
+            for path in paths:
+                Image.new('RGB', (80, 64), (10, 20, 30)).save(path)
+            _, box = mast3r_geometry(80, 64)
+            dw, dh = box[2]-box[0], box[3]-box[1]
+            K = np.array([[400, 0, dw/2], [0, 400, dh/2], [0, 0, 1]])
+            meta = root/'meta'
+            export_frames(paths, [np.full(dw*dh, z) for z in [2., 5., 9.]], [K]*3, meta)
+            (meta/'rgb/0001.png').unlink()
+            (meta/'depth/0001.npy').unlink()
+            bundle = read_bundle(meta)
+            self.assertEqual([entry[0].name for entry in bundle], ['0002.png', '0003.png'])
+            self.assertEqual(float(np.nanmedian(np.load(bundle[0][1]))), 5.)
+            result = subprocess.run([sys.executable, str(ROOT/'scripts/retreat_rgb.py'),
+                                     '--metadata-dir', str(meta), '--distance-factors', '1', '2',
+                                     '--output', str(root/'out')], capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(sorted(p.name for p in (root/'out/x2/rgb').iterdir()), ['0002.png', '0003.png'])
+            (meta/'depth/0003.npy').unlink()
+            self.assertEqual(len(read_bundle(meta, frame_name='0002.png')), 1)
+            with self.assertRaisesRegex(ValueError, 'depth.*0003'):
+                read_bundle(meta)
+            (meta/'rgb/0002.png').unlink()
+            (meta/'rgb/0003.png').unlink()
+            with self.assertRaisesRegex(ValueError, 'No matching RGB'):
+                read_bundle(meta)
+
     def test_exif_orientation_is_normalized_before_alignment(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

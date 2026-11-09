@@ -38,7 +38,8 @@ def main():
     if args.metadata_dir:
         if args.depth or args.cameras or args.layout != 'aligned' or args.assume_centered_principal_point:
             p.error('--metadata-dir already supplies aligned RGB, depth and actual intrinsics')
-        bundle = read_bundle(args.metadata_dir)
+        bundle = read_bundle(args.metadata_dir, frame_name=args.frame)
+        print(f'Selected {len(bundle)} existing RGB frame(s) from metadata')
         if args.frame:
             bundle = [entry for entry in bundle if entry[0].name == args.frame]
             if len(bundle) != 1:
