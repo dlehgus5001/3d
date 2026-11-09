@@ -98,6 +98,30 @@ python scripts/train_truck.py \
   --dust3r-model models/DUSt3R_ViTLarge_BaseDecoder_512_dpt.pth
 ```
 
+객체만 남긴 컬러 RGB가 `object/object_1`에 있다면 **GS 학습 입력만** 별도로 지정할 수 있습니다.
+원본 `images`는 카메라·depth 추정 및 기존 결과 검증에 계속 사용합니다.
+`object`는 원본과 같은 해상도·위치여야 하며, 크롭하거나 객체를 이동한 이미지는 사용할 수 없습니다.
+확장자를 제외한 이름으로 연결하므로 원본 `997.jpg`와 객체 `997.png`도 지원합니다.
+선택된 프레임에 객체 RGB가 없거나 이름이 중복되면 원본으로 대체하지 않고 오류로 중단합니다.
+검정 배경도 학습되지 않도록 기존 이진 마스크를 계속 적용하고 학습 배경색으로 합성합니다.
+
+카메라·depth 추정이 이미 끝났다면 **기존 `--data-dir`를 유지**하고 새 모델 폴더에 학습하세요.
+
+```bash
+python scripts/train_truck.py \
+  --data-dir data/object_1 \
+  --objects-dir object/object_1 \
+  --model-dir output/object_1_object_only \
+  --frames 50 --stage train
+```
+
+검사만 하려면 위 명령에 `--validate-only`를 추가합니다. 처음부터 실행할 때도
+`--images-dir`, `--masks-dir`와 함께 `--objects-dir`를 지정할 수 있습니다.
+이 경우 자세 추정에는 원본만, GS 학습에는 객체 RGB만 사용합니다.
+출력의 `training_rgb_inputs.json`에 실제 사용한 객체 파일 경로를 기록합니다.
+마스크·카메라·depth는 바꾸지 않습니다. 객체 RGB의 원본과의 위치 일치까지 자동으로
+검증할 수는 없으며, 이 입력 교체가 기존 재구성 오류를 해결한다고 보장하지는 않습니다.
+
 각 입력 경로는 절대 경로도 가능합니다. `--data-dir`를 생략하면 분리 입력 모드에서는
 저장소의 `data/<원본 폴더명>`을 사용합니다. `--mask-dir`도 `--masks-dir`와 같은 옵션입니다.
 

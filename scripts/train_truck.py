@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from truck_pipeline.workflow import select_frames, write_json, check_pose_artifacts, prepare_dataset_view
+from truck_pipeline.object_inputs import resolve_object_images
 
 
 def run(command, log):
@@ -33,6 +34,8 @@ def main():
     parser.add_argument('--data-dir', type=Path, help='Dataset/pose output directory; default data/truck, or data/<object> with separate input directories')
     parser.add_argument('--images-dir', type=Path, help='Original RGB folder, e.g. /data/images/object_1')
     parser.add_argument('--masks-dir', '--mask-dir', type=Path, help='Binary mask folder, e.g. /data/mask/object_1')
+    parser.add_argument('--objects-dir', '--object-dir', type=Path,
+                        help='Object-only color RGB for GS training; original images still used for poses')
     parser.add_argument('--model-dir', type=Path, default=ROOT / 'output/truck')
     parser.add_argument('--frames', type=int, default=None,
                         help='Maximum frames, evenly sampled in numeric filename order; omitted: all matched RGB/mask pairs')
@@ -57,8 +60,11 @@ def main():
     output = args.model_dir.resolve()
     selection = select_frames(data, args.frames)
     args.frames = selection['count']
+    object_images = resolve_object_images(selection['frames'], args.objects_dir) if args.objects_dir and args.stage != 'poses' else None
     print(json.dumps({'selected_count': selection['count'], 'selected_filenames': selection['filenames'],
                       'data_dir': str(data),
+                      'training_rgb_source': str(args.objects_dir.resolve()) if object_images is not None else str(data/'images'),
+                      'training_rgb_files': {name: str(path) for name, path in object_images.items()} if object_images is not None else None,
                       'requested_count': selection['requested_count'],
                       'available_pair_count': selection['available_pair_count'],
                       'skipped_without_mask': selection['skipped_without_mask'],
@@ -100,6 +106,8 @@ def main():
         return
     output.mkdir(parents=True, exist_ok=True)
     write_json(output / 'selected_frames.json', selection)
+    if object_images is not None:
+        write_json(output/'training_rgb_inputs.json', {name: str(path) for name, path in object_images.items()})
     with (output / 'truck_train.log').open('w') as log:
         log.write(json.dumps(selection, ensure_ascii=False) + '\n')
         run([sys.executable, ROOT / 'train_gs.py', '-s', data, '-m', output,
@@ -108,7 +116,8 @@ def main():
              '--random_background', '--white_background', '--sh_degree', args.sh_degree,
              '--iterations', args.iterations, '--resolution', args.resolution,
              '--port', args.port, '--test_iterations', args.iterations,
-             '--checkpoint_iterations', args.iterations], log)
+             '--checkpoint_iterations', args.iterations]
+            + (['--objects-dir', args.objects_dir.resolve()] if object_images is not None else []), log)
     ply = output / 'point_cloud' / f'iteration_{args.iterations}' / 'point_cloud.ply'
     if not ply.is_file() or ply.stat().st_size == 0:
         raise RuntimeError(f'Training exited without saved model: {ply}')

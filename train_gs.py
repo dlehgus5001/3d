@@ -199,7 +199,8 @@ def training(args, dataset, opt, pipe, testing_iterations, saving_iterations, ch
                        'iterations': opt.iterations, 'cameras': refined_cameras,
                        'training_frame_count': len(actual_frames),
                        'training_frame_names': actual_frames,
-                       'frame_visit_counts': frame_visits}, f, indent=2)
+                       'frame_visit_counts': frame_visits,
+                       'training_rgb_source': os.path.abspath(args.objects_dir) if args.objects_dir else 'original_images'}, f, indent=2)
     with open(os.path.join(scene.model_path, 'frame_visits.json'), 'w') as f:
         json.dump(frame_visits, f, indent=2)
     print(f'Frames actually sampled by optimizer: {sum(v > 0 for v in frame_visits.values())}/{len(actual_frames)}; visits: {frame_visits}', flush=True)
@@ -356,6 +357,8 @@ if __name__ == "__main__":
     parser.add_argument('--use_dust3r', action='store_true', default=False,
                         help='use dust3r estimated poses')
     parser.add_argument('--dust3r_json', type=str, default=None)
+    parser.add_argument('--objects-dir', type=str, default=None,
+                        help='Object-only RGB directory for DUSt3R GS training; preserves original cameras and masks')
     parser.add_argument('--skip_render_cameras', action='store_true',
                         help='Do not allocate unused legacy path cameras during training')
     parser.add_argument("--init_pcd_name", default='origin', type=str, 

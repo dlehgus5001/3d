@@ -290,7 +290,7 @@ def readColmapSceneInfo(path, images, eval, llffhold=8, extra_opts=None):
                            ply_path=ply_path)
     return scene_info
 
-def readDust3rCameras(dust3r_frames, images_folder, depths_npy=None, confidences_npy=None):
+def readDust3rCameras(dust3r_frames, images_folder, depths_npy=None, confidences_npy=None, object_images=None):
     cam_infos = []
     depths = np.load(depths_npy) if depths_npy else None
     confidences = np.load(confidences_npy) if confidences_npy else None
@@ -311,12 +311,12 @@ def readDust3rCameras(dust3r_frames, images_folder, depths_npy=None, confidences
         FovY = focal2fov(focal_length_y, image_height)
         FovX = focal2fov(focal_length_x, image_width)
 
-        image_path = osp.join(images_folder, frame['img_name'])
+        image_path = str(object_images[frame['img_name']]) if object_images is not None else osp.join(images_folder, frame['img_name'])
         image_name = frame['img_name'].split(".")[0]
         image = Image.open(image_path)
 
-        mask_path_png = osp.join(osp.dirname(images_folder), "masks", osp.basename(
-            image_path).replace(osp.splitext(osp.basename(image_path))[-1], '.png'))
+        # Masks always come from the original dataset, never the object RGB folder.
+        mask_path_png = osp.join(osp.dirname(images_folder), 'masks', osp.splitext(frame['img_name'])[0] + '.png')
         mask = cv2.imread(mask_path_png, cv2.IMREAD_GRAYSCALE).astype(np.uint8)
         mask = mask.astype(np.float32) / 255.0
 
@@ -348,8 +348,8 @@ def readDust3rSceneInfo(path, images, eval, extra_opts=None):
         raise ValueError('DUSt3R input selection is explicit; do not use --eval')
     records = validate_dataset(path, paired_only=True)
     images_folder = osp.join(path, "images")
-    # Always read full-FOV originals; loadCam alone controls training resolution.
-    # Pre-existing images_4 folders must not silently change images or intrinsics.
+    # Pose validation always uses originals. Optional object RGB must keep the
+    # same full-FOV grid; loadCam alone controls training resolution.
     ids = np.atleast_1d(np.loadtxt(osp.join(path, f"sparse_{str(extra_opts.sparse_view_num)}.txt"), dtype=np.int32))
     if len(ids) != extra_opts.sparse_view_num or len(set(ids.tolist())) != len(ids) or np.any(ids < 0) or np.any(ids >= len(records)):
         raise ValueError('sparse_N.txt must contain exactly N unique valid zero-based frame indices')
@@ -366,10 +366,17 @@ def readDust3rSceneInfo(path, images, eval, extra_opts=None):
     if [frame['id'] for frame in dust3r_frames] != list(range(len(ids))):
         raise ValueError('DUSt3R camera ids must be consecutive local indices')
     print(f'Actual training frames ({len(expected_names)}): {expected_names}')
+    objects_dir = getattr(extra_opts, 'objects_dir', None)
+    object_images = None
+    if objects_dir:
+        from truck_pipeline.object_inputs import resolve_object_images
+        object_images = resolve_object_images(dust3r_frames, objects_dir)
+        print(f'GS RGB source: object-only images from {objects_dir}')
     train_cam_infos = readDust3rCameras(
         dust3r_frames, images_folder,
         osp.join(path, f"dust3r_depth_{str(extra_opts.sparse_view_num)}.npy"),
-        osp.join(path, f"dust3r_confidence_{str(extra_opts.sparse_view_num)}.npy")
+        osp.join(path, f"dust3r_confidence_{str(extra_opts.sparse_view_num)}.npy"),
+        object_images=object_images
     )
     if osp.exists(osp.join(path, f"dust3r_{str(extra_opts.sparse_view_num)}_test.json")):
         with open(osp.join(path, f"dust3r_{str(extra_opts.sparse_view_num)}_test.json")) as f:
