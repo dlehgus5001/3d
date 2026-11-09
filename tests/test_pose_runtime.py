@@ -83,6 +83,10 @@ class Dust3rCpuRuntimeTests(unittest.TestCase):
             scene.preset_focal([48.,49.,48.])
 
     def test_pose_cli_runs_model_mst_optimizer_and_saves_all_artifacts(self):
+        # The actual pose estimator must ignore unpaired RGB/masks just like
+        # train_truck selection and the Gaussian scene reader do.
+        Image.new('RGB', (80, 60)).save(self.root/'images/0000.png')
+        Image.new('L', (80, 60)).save(self.root/'masks/9999.png')
         environment = os.environ.copy()
         environment['OMP_NUM_THREADS'] = '1'
         environment['MKL_NUM_THREADS'] = '1'

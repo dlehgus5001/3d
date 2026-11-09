@@ -346,7 +346,7 @@ def readDust3rSceneInfo(path, images, eval, extra_opts=None):
     from truck_pipeline.data import validate_dataset
     if eval:
         raise ValueError('DUSt3R input selection is explicit; do not use --eval')
-    records = validate_dataset(path)
+    records = validate_dataset(path, paired_only=True)
     images_folder = osp.join(path, "images")
     # Always read full-FOV originals; loadCam alone controls training resolution.
     # Pre-existing images_4 folders must not silently change images or intrinsics.

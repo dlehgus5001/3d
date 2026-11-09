@@ -88,10 +88,55 @@ class WorkflowTests(unittest.TestCase):
         self.assertFalse(output.exists())
 
     def test_invalid_requested_counts_fail(self):
-        for count in (0, 2, 51):
+        for count in (0, 2):
             with self.subTest(count=count):
                 with self.assertRaises(ValueError):
                     select_frames(self.root, count)
+
+    def test_requested_maximum_caps_at_available_pairs(self):
+        selection = select_frames(self.root, 100)
+        self.assertEqual(selection['count'], 50)
+        self.assertEqual(selection['requested_count'], 100)
+        self.assertEqual(select_frames(self.root)['count'], 50)
+
+    def test_partial_masks_auto_count_numeric_order_and_even_selection(self):
+        import shutil
+        from truck_pipeline.data import validate_dataset
+        from pred_poses import selected_records
+        for folder in ['images', 'masks']:
+            shutil.rmtree(self.root/folder)
+            (self.root/folder).mkdir()
+        mask = np.zeros((16, 24), np.uint8)
+        mask[3:10, 5:16] = 255
+        for i in range(1, 121):
+            Image.new('RGB', (24, 16)).save(self.root/'images'/f'{i}.png')
+            if i % 3:
+                Image.fromarray(mask).save(self.root/'masks'/f'{i}.png')
+        Image.fromarray(mask).save(self.root/'masks/999.png')
+        all_frames = select_frames(self.root)
+        self.assertEqual(all_frames['count'], 80)
+        expected = [f'{i}.png' for i in range(1, 121) if i % 3]
+        self.assertEqual(all_frames['filenames'], expected)
+        self.assertEqual(len(all_frames['skipped_without_mask']), 40)
+        self.assertEqual(all_frames['skipped_without_image'], ['999.png'])
+        chosen = select_frames(self.root, 50)
+        indices = np.rint(np.linspace(0, 79, 50)).astype(int).tolist()
+        self.assertEqual(chosen['indices'], indices)
+        self.assertEqual(chosen['filenames'], [expected[i] for i in indices])
+        (self.root/'sparse_50.txt').write_text(''.join(f'{i}\n' for i in indices))
+        records, ids = selected_records(self.root, validate_dataset(self.root, paired_only=True), 50)
+        self.assertEqual([r['filename'] for r in records], chosen['filenames'])
+        np.testing.assert_array_equal(ids, indices)
+        script = Path(__file__).resolve().parents[1]/'scripts/train_truck.py'
+        for flags, count in [([], 80), (['--frames', '50'], 50), (['--frames', '100'], 80)]:
+            result = subprocess.run([sys.executable, str(script), '--data-dir', str(self.root),
+                                     '--validate-only']+flags, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(json.loads(result.stdout)['selected_count'], count)
+        # A present but invalid mask must not silently disappear from selection.
+        Image.new('L', (24, 16), 0).save(self.root/'masks/2.png')
+        with self.assertRaisesRegex(ValueError, 'empty truck mask'):
+            select_frames(self.root)
 
     def test_pose_artifacts_require_same_names_and_order(self):
         selection = select_frames(self.root, 50)

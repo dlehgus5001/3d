@@ -51,7 +51,7 @@ def selected_records(source, records, count):
 
 def run(args):
     source = Path(args.source_path).resolve()
-    records = validate_dataset(source)
+    records = validate_dataset(source, paired_only=True)
     records, ids = selected_records(source, records, args.sparse_num)
     if not Path(args.model_path).is_file():
         raise ValueError(f'Local DUSt3R checkpoint missing: {args.model_path}; copy it from the connected preparation machine')

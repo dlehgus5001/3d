@@ -32,7 +32,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--data-dir', type=Path, default=ROOT / 'data/truck')
     parser.add_argument('--model-dir', type=Path, default=ROOT / 'output/truck')
-    parser.add_argument('--frames', type=int, default=50)
+    parser.add_argument('--frames', type=int, default=None,
+                        help='Maximum frames, evenly sampled in numeric filename order; omitted: all matched RGB/mask pairs')
     parser.add_argument('--dust3r-model', type=Path, default=ROOT / 'models/DUSt3R_ViTLarge_BaseDecoder_512_dpt.pth')
     parser.add_argument('--stage', choices=['all', 'poses', 'train'], default='all')
     parser.add_argument('--validate-only', action='store_true')
@@ -47,7 +48,12 @@ def main():
     data = args.data_dir.resolve()
     output = args.model_dir.resolve()
     selection = select_frames(data, args.frames)
+    args.frames = selection['count']
     print(json.dumps({'selected_count': selection['count'], 'selected_filenames': selection['filenames'],
+                      'requested_count': selection['requested_count'],
+                      'available_pair_count': selection['available_pair_count'],
+                      'skipped_without_mask': selection['skipped_without_mask'],
+                      'skipped_without_image': selection['skipped_without_image'],
                       'input_sha256': selection['input_sha256']}, ensure_ascii=False, indent=2), flush=True)
     if args.validate_only:
         return
@@ -70,10 +76,13 @@ def main():
     else:
         np_text = ''.join(f'{i}\n' for i in selection['indices'])
         (data / f'sparse_{args.frames}.txt').write_text(np_text)
+        scene_graph = args.scene_graph
+        if args.frames == 3 and scene_graph == 'swin-4':
+            scene_graph = 'swin-3'
         with (data / 'truck_poses.log').open('w') as log:
             run([sys.executable, ROOT / 'pred_poses.py', '-s', data,
                  '--sparse_num', args.frames, '--model-path', args.dust3r_model.resolve(),
-                 '--scene-graph', args.scene_graph, '--align-iterations', args.align_iterations,
+                 '--scene-graph', scene_graph, '--align-iterations', args.align_iterations,
                  '--batch-size', args.batch_size], log)
         check_pose_artifacts(data, selection)
         write_json(pose_manifest, selection)

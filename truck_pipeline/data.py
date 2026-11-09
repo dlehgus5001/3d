@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 import shutil
 import subprocess
 import tempfile
@@ -23,7 +24,13 @@ class DatasetValidationError(ValueError):
         super().__init__("Dataset validation failed:\n" + "\n".join(self.issues))
 
 
-def validate_dataset(data_dir):
+def frame_sort_key(name):
+    """Natural filename order: 1.png, 2.png, 10.png (also zero-padded names)."""
+    return tuple((1, int(part)) if part.isdigit() else (0, part)
+                 for part in re.split(r'(\d+)', name)) + ((0, name),)
+
+
+def validate_dataset(data_dir, paired_only=False):
     """Return sorted frame records or raise with every detected filename/reason.
 
     Each record has ``filename``, zero-based ``index``, ``width``, ``height``,
@@ -32,6 +39,8 @@ def validate_dataset(data_dir):
     RGB/RGBA/palette PNGs are accepted. Alpha, when present, must be fully
     opaque so it cannot conflict with mask colors. An all-white mask is
     rejected because it includes the entire background.
+    With paired_only=True, ignore unmatched names and index only matching pairs
+    in numeric filename order; malformed existing pairs still fail validation.
     """
     root = Path(data_dir)
     issues, entries = [], {}
@@ -50,13 +59,19 @@ def validate_dataset(data_dir):
         if not entries[kind]:
             issues.append(f"{kind}/: no PNG files found")
     images, masks = entries["images"], entries["masks"]
-    for name in sorted(images.keys() - masks.keys()):
-        issues.append(f"masks/{name}: matching mask is missing")
-    for name in sorted(masks.keys() - images.keys()):
-        issues.append(f"masks/{name}: no matching original image")
+    if not paired_only:
+        for name in sorted(images.keys() - masks.keys()):
+            issues.append(f"masks/{name}: matching mask is missing")
+        for name in sorted(masks.keys() - images.keys()):
+            issues.append(f"masks/{name}: no matching original image")
+    else:
+        images = {name: path for name, path in images.items() if name in masks}
+        if not images:
+            issues.append('images/masks: no matching PNG pairs found')
     records = []
     common_size = None
-    for index, (name, path) in enumerate(sorted(images.items())):
+    for index, name in enumerate(sorted(images, key=frame_sort_key)):
+        path = images[name]
         try:
             with Image.open(path) as image:
                 image.load()

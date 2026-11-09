@@ -8,12 +8,14 @@ import numpy as np
 from truck_pipeline.data import validate_dataset
 
 
-def select_frames(data_dir, count=50):
-    records = validate_dataset(data_dir)
-    if count < 3:
+def select_frames(data_dir, count=None):
+    records = validate_dataset(data_dir, paired_only=True)
+    requested = count
+    if count is not None and count < 3:
         raise ValueError('At least 3 views are required for orbit reconstruction')
-    if count > len(records):
-        raise ValueError(f'Requested {count} frames but only {len(records)} validated pairs exist')
+    count = len(records) if count is None else min(count, len(records))
+    if count < 3:
+        raise ValueError(f'At least 3 matched image/mask pairs are required; found {len(records)}')
     indices = np.rint(np.linspace(0, len(records) - 1, count)).astype(int).tolist()
     selected = [records[i] for i in indices]
     digest = hashlib.sha256()
@@ -25,7 +27,12 @@ def select_frames(data_dir, count=50):
             with path.open('rb') as stream:
                 for block in iter(lambda: stream.read(1024 * 1024), b''):
                     digest.update(block)
+    image_names = {p.name for p in (root / 'images').glob('*.png') if p.is_file()}
+    mask_names = {p.name for p in (root / 'masks').glob('*.png') if p.is_file()}
     return {'schema_version': 1, 'count': count, 'indices': indices,
+            'requested_count': requested, 'available_pair_count': len(records),
+            'skipped_without_mask': sorted(image_names - mask_names),
+            'skipped_without_image': sorted(mask_names - image_names),
             'filenames': [r['filename'] for r in selected],
             'input_sha256': digest.hexdigest(), 'frames': selected}
 
