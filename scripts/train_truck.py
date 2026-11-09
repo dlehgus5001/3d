@@ -10,7 +10,7 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from truck_pipeline.workflow import select_frames, write_json, check_pose_artifacts
+from truck_pipeline.workflow import select_frames, write_json, check_pose_artifacts, prepare_dataset_view
 
 
 def run(command, log):
@@ -30,7 +30,9 @@ def run(command, log):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--data-dir', type=Path, default=ROOT / 'data/truck')
+    parser.add_argument('--data-dir', type=Path, help='Dataset/pose output directory; default data/truck, or data/<object> with separate input directories')
+    parser.add_argument('--images-dir', type=Path, help='Original RGB folder, e.g. /data/images/object_1')
+    parser.add_argument('--masks-dir', '--mask-dir', type=Path, help='Binary mask folder, e.g. /data/mask/object_1')
     parser.add_argument('--model-dir', type=Path, default=ROOT / 'output/truck')
     parser.add_argument('--frames', type=int, default=None,
                         help='Maximum frames, evenly sampled in numeric filename order; omitted: all matched RGB/mask pairs')
@@ -45,11 +47,18 @@ def main():
     parser.add_argument('--batch-size', type=int, default=1)
     parser.add_argument('--port', type=int, default=6009)
     args = parser.parse_args()
-    data = args.data_dir.resolve()
+    if (args.images_dir is None) != (args.masks_dir is None):
+        parser.error('--images-dir and --masks-dir must be supplied together')
+    if args.images_dir is not None:
+        data = prepare_dataset_view(args.data_dir or ROOT/'data'/args.images_dir.resolve().name,
+                                    args.images_dir, args.masks_dir)
+    else:
+        data = (args.data_dir or ROOT/'data/truck').resolve()
     output = args.model_dir.resolve()
     selection = select_frames(data, args.frames)
     args.frames = selection['count']
     print(json.dumps({'selected_count': selection['count'], 'selected_filenames': selection['filenames'],
+                      'data_dir': str(data),
                       'requested_count': selection['requested_count'],
                       'available_pair_count': selection['available_pair_count'],
                       'skipped_without_mask': selection['skipped_without_mask'],

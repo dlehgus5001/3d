@@ -9,7 +9,7 @@ import unittest
 import numpy as np
 from PIL import Image
 
-from truck_pipeline.workflow import check_pose_artifacts, select_frames, write_json
+from truck_pipeline.workflow import check_pose_artifacts, select_frames, write_json, prepare_dataset_view
 from truck_pipeline.pose_geometry import write_rgb_ply
 
 
@@ -92,6 +92,41 @@ class WorkflowTests(unittest.TestCase):
             with self.subTest(count=count):
                 with self.assertRaises(ValueError):
                     select_frames(self.root, count)
+
+    def test_separate_input_directories_link_and_cli_select_without_moving_inputs(self):
+        image_dir = self.root/'images'/'object_1'
+        mask_dir = self.root/'mask'/'object_1'
+        image_dir.mkdir()
+        mask_dir.mkdir(parents=True)
+        mask = np.zeros((16, 24), np.uint8)
+        mask[3:10, 5:16] = 255
+        for i in range(1, 61):
+            Image.new('RGB', (24, 16), (i, 0, 0)).save(image_dir/f'{i}.png')
+            if i % 5:
+                Image.fromarray(mask).save(mask_dir/f'{i}.png')
+        before = {str(p): p.read_bytes() for folder in [image_dir, mask_dir] for p in folder.iterdir()}
+        data = self.root/'prepared'/'object_1'
+        script = Path(__file__).resolve().parents[1]/'scripts/train_truck.py'
+        command = [sys.executable, str(script), '--images-dir', str(image_dir), '--masks-dir', str(mask_dir),
+                   '--data-dir', str(data), '--frames', '50', '--validate-only']
+        for _ in range(2):
+            result = subprocess.run(command, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            selection = json.loads(result.stdout)
+            self.assertEqual(selection['selected_count'], 48)
+            self.assertEqual(len(selection['skipped_without_mask']), 12)
+            self.assertEqual(selection['selected_filenames'][:3], ['1.png', '2.png', '3.png'])
+        self.assertEqual((data/'images').resolve(), image_dir)
+        self.assertEqual((data/'masks').resolve(), mask_dir)
+        self.assertTrue((data/'images').is_symlink())
+        for name, content in before.items():
+            self.assertEqual(Path(name).read_bytes(), content)
+        other_masks = self.root/'other_masks'
+        other_masks.mkdir()
+        with self.assertRaisesRegex(ValueError, 'different input'):
+            prepare_dataset_view(data, image_dir, other_masks)
+        with self.assertRaisesRegex(ValueError, 'outside'):
+            prepare_dataset_view(image_dir/'nested', image_dir, mask_dir)
 
     def test_requested_maximum_caps_at_available_pairs(self):
         selection = select_frames(self.root, 100)

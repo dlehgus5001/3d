@@ -72,6 +72,31 @@ GPU 없이 입력만 검사하려면:
 python scripts/train_truck.py --data-dir data/truck --frames 50 --validate-only
 ```
 
+원본과 마스크가 `images/object_1/`, `mask/object_1/`처럼 분리되어 있으면 각각 지정합니다.
+`--data-dir`에는 자세 추정 결과를 저장할 별도 작업 폴더를 지정합니다. 코드가 그 안에
+`images`, `masks` 심볼릭 링크를 생성하며 입력을 이동·복사하거나 덮어쓰지 않습니다.
+입력 검사만 실행해도 이 링크는 생성됩니다. 같은 입력으로 재실행할 수 있으며, 다른 입력이
+이미 연결된 작업 폴더는 덮어쓰지 않습니다. 원본 입력 폴더를 이후에도 유지해야 합니다.
+
+```bash
+python scripts/train_truck.py \
+  --images-dir images/object_1 \
+  --masks-dir mask/object_1 \
+  --data-dir data/object_1 \
+  --frames 50 --validate-only
+
+python scripts/train_truck.py \
+  --images-dir images/object_1 \
+  --masks-dir mask/object_1 \
+  --data-dir data/object_1 \
+  --model-dir output/object_1 \
+  --frames 50 \
+  --dust3r-model models/DUSt3R_ViTLarge_BaseDecoder_512_dpt.pth
+```
+
+각 입력 경로는 절대 경로도 가능합니다. `--data-dir`를 생략하면 분리 입력 모드에서는
+저장소의 `data/<원본 폴더명>`을 사용합니다. `--mask-dir`도 `--masks-dir`와 같은 옵션입니다.
+
 프레임 수를 직접 세지 않으려면 `--frames`를 생략합니다. 사용 가능한 RGB/마스크 쌍을
 모두 선택합니다. `--frames 50`은 최대 50개를 숫자 파일명 순서 전체에서 균등 선택합니다.
 예를 들어 `1.png, 2.png, 10.png` 순으로 정렬하므로 0을 붙이지 않은 파일명도 사용할 수 있습니다.

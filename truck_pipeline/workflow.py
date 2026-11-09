@@ -8,6 +8,28 @@ import numpy as np
 from truck_pipeline.data import validate_dataset
 
 
+def prepare_dataset_view(data_dir, images_dir, masks_dir):
+    """Link separate read-only inputs into the existing pose/training layout."""
+    root = Path(data_dir).resolve()
+    sources = {'images': Path(images_dir).resolve(), 'masks': Path(masks_dir).resolve()}
+    if not all(source.is_dir() for source in sources.values()):
+        raise ValueError('Both --images-dir and --masks-dir must be existing directories')
+    if sources['images'] == sources['masks']:
+        raise ValueError('RGB and mask directories must be different')
+    for name, source in sources.items():
+        if root.is_relative_to(source):
+            raise ValueError('--data-dir must be outside the input image/mask directories')
+        link = root/name
+        if (link.exists() or link.is_symlink()) and (not link.is_dir() or link.resolve() != source):
+            raise ValueError(f'{link} already points to different input; choose a new --data-dir')
+    root.mkdir(parents=True, exist_ok=True)
+    for name, source in sources.items():
+        link = root/name
+        if not link.exists():
+            link.symlink_to(source, target_is_directory=True)
+    return root
+
+
 def select_frames(data_dir, count=None):
     records = validate_dataset(data_dir, paired_only=True)
     requested = count
