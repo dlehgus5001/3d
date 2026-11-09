@@ -5,7 +5,7 @@ from pathlib import Path
 
 import numpy as np
 
-from truck_pipeline.data import validate_dataset
+from truck_pipeline.data import validate_dataset, mask_filename, IMAGE_SUFFIXES
 
 
 def prepare_dataset_view(data_dir, images_dir, masks_dir):
@@ -44,17 +44,18 @@ def select_frames(data_dir, count=None):
     root = Path(data_dir)
     for record in selected:
         for folder in ('images', 'masks'):
-            path = root / folder / record['filename']
-            digest.update((folder + '/' + record['filename']).encode())
+            name = record['filename'] if folder == 'images' else mask_filename(record['filename'])
+            path = root / folder / name
+            digest.update((folder + '/' + name).encode())
             with path.open('rb') as stream:
                 for block in iter(lambda: stream.read(1024 * 1024), b''):
                     digest.update(block)
-    image_names = {p.name for p in (root / 'images').glob('*.png') if p.is_file()}
+    image_names = {p.name for p in (root / 'images').iterdir() if p.is_file() and p.suffix.lower() in IMAGE_SUFFIXES}
     mask_names = {p.name for p in (root / 'masks').glob('*.png') if p.is_file()}
     return {'schema_version': 1, 'count': count, 'indices': indices,
             'requested_count': requested, 'available_pair_count': len(records),
-            'skipped_without_mask': sorted(image_names - mask_names),
-            'skipped_without_image': sorted(mask_names - image_names),
+            'skipped_without_mask': sorted(name for name in image_names if mask_filename(name) not in mask_names),
+            'skipped_without_image': sorted(mask_names - {mask_filename(name) for name in image_names}),
             'filenames': [r['filename'] for r in selected],
             'input_sha256': digest.hexdigest(), 'frames': selected}
 

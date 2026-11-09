@@ -87,6 +87,9 @@ class Dust3rCpuRuntimeTests(unittest.TestCase):
         # train_truck selection and the Gaussian scene reader do.
         Image.new('RGB', (80, 60)).save(self.root/'images/0000.png')
         Image.new('L', (80, 60)).save(self.root/'masks/9999.png')
+        with Image.open(self.root/'images/0001.png') as image:
+            image.save(self.root/'images/0001.jpg')
+        (self.root/'images/0001.png').unlink()
         environment = os.environ.copy()
         environment['OMP_NUM_THREADS'] = '1'
         environment['MKL_NUM_THREADS'] = '1'
@@ -101,7 +104,7 @@ class Dust3rCpuRuntimeTests(unittest.TestCase):
             stderr=subprocess.STDOUT, timeout=120)
         self.assertEqual(result.returncode, 0, result.stdout[-16000:])
         cameras = json.loads((self.root/'dust3r_3.json').read_text())
-        self.assertEqual([c['img_name'] for c in cameras], ['0001.png','0002.png','0003.png'])
+        self.assertEqual([c['img_name'] for c in cameras], ['0001.jpg','0002.png','0003.png'])
         self.assertEqual([c['id'] for c in cameras], [0,1,2])
         for camera in cameras:
             self.assertEqual((camera['width'],camera['height']), (64,48))

@@ -30,11 +30,19 @@ def frame_sort_key(name):
                  for part in re.split(r'(\d+)', name)) + ((0, name),)
 
 
+IMAGE_SUFFIXES = {'.png', '.jpg', '.jpeg'}
+
+
+def mask_filename(image_name):
+    return Path(image_name).stem + '.png'
+
+
 def validate_dataset(data_dir, paired_only=False):
     """Return sorted frame records or raise with every detected filename/reason.
 
     Each record has ``filename``, zero-based ``index``, ``width``, ``height``,
     and ``foreground_pixels``. All images must have one common resolution.
+    RGB supports PNG/JPG/JPEG and matches a PNG mask by filename stem.
     Masks must encode binary black/white pixels: L/1 or grayscale-equivalent
     RGB/RGBA/palette PNGs are accepted. Alpha, when present, must be fully
     opaque so it cannot conflict with mask colors. An all-white mask is
@@ -52,73 +60,83 @@ def validate_dataset(data_dir, paired_only=False):
             continue
         entries[kind] = {}
         for p in sorted(folder.iterdir()):
-            if not p.is_file() or p.suffix != ".png":
-                issues.append(f"{kind}/{p.name}: expected a PNG file (lowercase .png)")
+            supported = p.suffix.lower() in IMAGE_SUFFIXES if kind == 'images' else p.suffix == '.png'
+            if not p.is_file() or not supported:
+                expected = 'a PNG/JPG/JPEG image' if kind == 'images' else 'a PNG file (lowercase .png)'
+                issues.append(f"{kind}/{p.name}: expected {expected}")
             else:
                 entries[kind][p.name] = p
         if not entries[kind]:
-            issues.append(f"{kind}/: no PNG files found")
+            issues.append(f"{kind}/: no supported image files found")
     images, masks = entries["images"], entries["masks"]
+    by_mask = {}
+    for name in images:
+        target = mask_filename(name)
+        if target in by_mask:
+            issues.append(f'images/{name}: duplicate image stem with {by_mask[target]}; mask match is ambiguous')
+        by_mask[target] = name
     if not paired_only:
-        for name in sorted(images.keys() - masks.keys()):
+        for name in sorted(by_mask.keys() - masks.keys()):
             issues.append(f"masks/{name}: matching mask is missing")
-        for name in sorted(masks.keys() - images.keys()):
+        for name in sorted(masks.keys() - by_mask.keys()):
             issues.append(f"masks/{name}: no matching original image")
     else:
-        images = {name: path for name, path in images.items() if name in masks}
+        images = {name: path for name, path in images.items() if mask_filename(name) in masks}
         if not images:
-            issues.append('images/masks: no matching PNG pairs found')
+            issues.append('images/masks: no matching RGB/PNG-mask pairs found')
     records = []
     common_size = None
     for index, name in enumerate(sorted(images, key=frame_sort_key)):
         path = images[name]
+        mask_name = mask_filename(name)
         try:
             with Image.open(path) as image:
                 image.load()
-                if image.format != "PNG":
-                    issues.append(f"images/{name}: file contents are not PNG")
+                expected_format = 'PNG' if path.suffix.lower() == '.png' else 'JPEG'
+                if image.format != expected_format:
+                    issues.append(f"images/{name}: file contents are not {expected_format}")
                 if image.mode not in ("RGB", "RGBA", "L"):
                     issues.append(f"images/{name}: unsupported image mode {image.mode}")
                 size = image.size
         except (OSError, ValueError) as exc:
-            issues.append(f"images/{name}: cannot decode PNG: {exc}")
+            issues.append(f"images/{name}: cannot decode image: {exc}")
             continue
         if common_size is None:
             common_size = size
         elif size != common_size:
             issues.append(f"images/{name}: resolution {size} differs from dataset {common_size}")
-        if name not in masks:
+        if mask_name not in masks:
             continue
         try:
-            with Image.open(masks[name]) as mask:
+            with Image.open(masks[mask_name]) as mask:
                 mask.load()
                 if mask.format != "PNG":
-                    issues.append(f"masks/{name}: file contents are not PNG")
+                    issues.append(f"masks/{mask_name}: file contents are not PNG")
                 if mask.size != size:
-                    issues.append(f"masks/{name}: resolution {mask.size} does not match images/{name} {size}")
+                    issues.append(f"masks/{mask_name}: resolution {mask.size} does not match images/{name} {size}")
                 if mask.mode in ("L", "1"):
                     pixels = np.asarray(mask.convert("L"))
                 elif mask.mode in ("RGB", "RGBA", "P"):
                     color = np.asarray(mask.convert("RGBA"))
                     if np.any(color[..., 3] != 255):
-                        issues.append(f"masks/{name}: nonopaque alpha is ambiguous; encode the mask as black/white pixels with opaque alpha")
+                        issues.append(f"masks/{mask_name}: nonopaque alpha is ambiguous; encode the mask as black/white pixels with opaque alpha")
                         continue
                     if np.any(color[..., 0] != color[..., 1]) or np.any(color[..., 0] != color[..., 2]):
-                        issues.append(f"masks/{name}: RGB channels differ; expected grayscale black/white mask")
+                        issues.append(f"masks/{mask_name}: RGB channels differ; expected grayscale black/white mask")
                         continue
                     pixels = color[..., 0]
                 else:
-                    issues.append(f"masks/{name}: mode {mask.mode}; expected binary L/1, grayscale RGB/RGBA, or black/white palette PNG")
+                    issues.append(f"masks/{mask_name}: mode {mask.mode}; expected binary L/1, grayscale RGB/RGBA, or black/white palette PNG")
                     continue
                 if np.any((pixels != 0) & (pixels != 255)):
-                    issues.append(f"masks/{name}: nonbinary values; truck must be 255 and background 0")
+                    issues.append(f"masks/{mask_name}: nonbinary values; truck must be 255 and background 0")
                 foreground = int(np.count_nonzero(pixels == 255))
                 if foreground == 0:
-                    issues.append(f"masks/{name}: empty truck mask (no white pixels)")
+                    issues.append(f"masks/{mask_name}: empty truck mask (no white pixels)")
                 elif foreground == pixels.size:
-                    issues.append(f"masks/{name}: all-white mask has no background")
+                    issues.append(f"masks/{mask_name}: all-white mask has no background")
         except (OSError, ValueError) as exc:
-            issues.append(f"masks/{name}: cannot decode PNG: {exc}")
+            issues.append(f"masks/{mask_name}: cannot decode PNG: {exc}")
             continue
         records.append({"filename": name, "index": index, "width": size[0],
                         "height": size[1], "foreground_pixels": foreground})

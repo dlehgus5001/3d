@@ -134,6 +134,35 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(selection['requested_count'], 100)
         self.assertEqual(select_frames(self.root)['count'], 50)
 
+    def test_jpeg_originals_match_png_masks_and_digest_tracks_actual_mask(self):
+        from truck_pipeline.data import validate_dataset
+        for path in list((self.root/'images').iterdir()):
+            suffix = '.JPG' if int(path.stem) % 2 else '.jpeg'
+            with Image.open(path) as image:
+                image.save(path.with_suffix(suffix))
+            path.unlink()
+        (self.root/'masks/0002.png').unlink()
+        Image.new('RGB', (24, 16)).save(self.root/'images/999.jpg')
+        before = select_frames(self.root, 50)
+        self.assertEqual(before['count'], 49)
+        self.assertEqual(before['filenames'][:3], ['0001.JPG', '0003.JPG', '0004.jpeg'])
+        self.assertEqual(before['skipped_without_mask'], ['0002.jpeg', '999.jpg'])
+        mask_path = self.root/'masks/0003.png'
+        with Image.open(mask_path) as image:
+            changed = image.copy()
+        changed.putpixel((0, 0), 255)
+        changed.save(mask_path)
+        self.assertNotEqual(before['input_sha256'], select_frames(self.root, 50)['input_sha256'])
+        script = Path(__file__).resolve().parents[1]/'scripts/train_truck.py'
+        result = subprocess.run([sys.executable, str(script), '--data-dir', str(self.root),
+                                 '--frames', '50', '--validate-only'], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)['selected_count'], 49)
+        # Multiple originals for one mask must never be chosen arbitrarily.
+        Image.new('RGB', (24, 16)).save(self.root/'images/0001.png')
+        with self.assertRaisesRegex(ValueError, 'ambiguous'):
+            validate_dataset(self.root, paired_only=True)
+
     def test_partial_masks_auto_count_numeric_order_and_even_selection(self):
         import shutil
         from truck_pipeline.data import validate_dataset

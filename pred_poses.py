@@ -85,7 +85,7 @@ def run(args):
         with Image.open(source/'images'/name) as im:
             transform = ImageTransform.for_size(*im.size, args.image_size)
             rgb = transform.image(im)
-        with Image.open(source/'masks'/name) as im:
+        with Image.open(source/'masks'/(Path(name).stem + '.png')) as im:
             mask = transform.image(im, mask=True) > 0
         if not mask.any():
             raise ValueError(f'{name}: truck disappears at DUSt3R inference resolution; increase --image-size or capture closer')
