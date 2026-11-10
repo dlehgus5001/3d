@@ -37,6 +37,8 @@ def parser():
     p.add_argument('--up-vector', type=float, nargs=3, help='Override capture-plane inferred world up')
     p.add_argument('--center', type=float, nargs=3, help='Override trained foreground bounds center')
     p.add_argument('--radius', type=float, help='Override orbit radius; must fit Gaussian bounds')
+    p.add_argument('--distance-factor', type=float, default=1.,
+                   help='Multiply the automatic (or explicit --radius) orbit distance; >=1, same field of view')
     p.add_argument('--margin', type=float, default=1.2, help='Framing safety multiplier, >=1')
     p.add_argument('--sh-degree', type=int, help='Override saved SH degree; otherwise infer from PLY')
     p.add_argument('--overwrite', action='store_true', help='Allow replacing matching PNGs and manifest')
@@ -62,6 +64,15 @@ def select_ply(model_path, explicit=None, iteration=None):
     if not candidates:
         raise ValueError(f'No saved Gaussian PLY under {model_path}; train first or pass --ply')
     return max(candidates)[1]
+
+
+def retreat_radius(base_radius, factor):
+    if not np.isfinite(factor) or factor < 1:
+        raise ValueError('--distance-factor must be finite and >=1')
+    radius = base_radius * factor
+    if not np.isfinite(radius):
+        raise ValueError('Multiplied orbit radius is not finite')
+    return radius
 
 
 def read_cameras(model_path, explicit=None):
@@ -107,6 +118,7 @@ def main(argv=None):
             raise ValueError('--margin must be finite and >=1')
         if not np.isfinite(args.start_azimuth):
             raise ValueError('--start-azimuth must be finite')
+        retreat_radius(1., args.distance_factor)
         ply_path = select_ply(args.model_path, args.ply, args.iteration)
         cameras = read_cameras(args.model_path, args.camera_json)
         from plyfile import PlyData
@@ -144,6 +156,8 @@ def main(argv=None):
         radius = args.radius if args.radius is not None else max(minimum_radius, observed_radius)
         if not np.isfinite(radius) or radius < minimum_radius:
             raise ValueError(f'Orbit radius must be >= {minimum_radius:.5g} to fit Gaussian bounds')
+        base_radius = radius
+        radius = retreat_radius(base_radius, args.distance_factor)
         planned_paths = [args.output / elevation_directory(e) / f'{i:04d}.png' for e in elevations for i in range(1, args.frames_per_elevation + 1)]
         validate_output_paths(args.output, planned_paths, args.overwrite)
         import torch
@@ -165,6 +179,7 @@ def main(argv=None):
             up_vector=up.tolist(), zero_azimuth_vector=axis_x.tolist(), capture_elevation=capture_elevation,
             elevations=elevations, frames_per_elevation=args.frames_per_elevation,
             width=args.width, height=args.height, radius=radius, fov_y_degrees=math.degrees(fov_y),
+            base_radius=base_radius, distance_factor=args.distance_factor,
             alpha='native accumulated opacity; straight RGBA, RGB unpremultiplied from black background',
             top_view='At 90 degrees azimuth changes roll, not camera position')
         (args.output / 'render_config.json').write_text(json.dumps(config, indent=2) + '\n')

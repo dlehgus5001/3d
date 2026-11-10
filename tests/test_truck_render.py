@@ -8,10 +8,22 @@ from PIL import Image
 
 from scripts.truck_render_utils import (alpha_bounds, azimuths, elevation_directory,
     infer_orbit_frame, orbit_camera, rgba_from_accumulated, safe_radius)
-from scripts.render_truck import select_ply, read_cameras, validate_output_paths
+from scripts.render_truck import select_ply, read_cameras, validate_output_paths, retreat_radius
 
 
 class TruckRenderTests(unittest.TestCase):
+    def test_distance_factor_retreats_about_object_center_at_every_elevation(self):
+        center = np.array([2.,3.,4.])
+        axes = np.eye(3)
+        for elevation in (30,40,50,60,70,80,90):
+            before = orbit_camera(center,*axes,12.,37.,elevation)
+            after = orbit_camera(center,*axes,retreat_radius(12.,5.),37.,elevation)
+            np.testing.assert_allclose(after[:3,3]-center,5*(before[:3,3]-center),atol=1e-12)
+            np.testing.assert_allclose(after[:3,:3],before[:3,:3],atol=1e-12)
+        for bad in (0,-1,.5,float('nan'),float('inf')):
+            with self.assertRaisesRegex(ValueError,'distance-factor'):
+                retreat_radius(12.,bad)
+
     def test_overwrite_cannot_mix_stale_frames_into_new_sequence(self):
         with tempfile.TemporaryDirectory() as temporary:
             output = Path(temporary)

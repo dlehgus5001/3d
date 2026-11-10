@@ -116,3 +116,17 @@ python scripts/render_truck.py \
 RGBA의 alpha는 학습된 Gaussian의 불투명도입니다. 잘못 남은 배경 점까지 자동으로
 제거하는 후처리 마스크는 아닙니다. 실제 결과를 보고 카메라·마스크 품질을 확인하세요.
 `object_2`는 위 명령의 모든 `object_1`을 `object_2`로 바꿔 별도로 실행합니다.
+
+기존 설정 파일 없이 더 먼 거리에서 찍으려면 `--distance-factor 5`를 추가하세요.
+자동으로 계산한 기본 거리의 5배에서 같은 화각으로 렌더링합니다.
+`--radius`도 지정하면 그 값에 배수를 곱합니다. 배수는 1 이상이며 실제 미터 단위는 아닙니다.
+예를 들어 여러 각도의 먼 거리 렌더링은 다음과 같습니다.
+
+```bash
+python scripts/render_truck.py \
+  --model-path output/maro_object_1 \
+  --camera-json output/maro_object_1/capture_cameras.json \
+  --output renders/maro_object_1_far5 \
+  --elevations 30 40 50 60 70 80 90 \
+  --frames-per-elevation 120 --distance-factor 5
+```
