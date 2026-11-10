@@ -7,6 +7,11 @@
 기반: [GaussianObject](https://github.com/GaussianObject/GaussianObject), 가져온 커밋 `91048a5dd3f9313e5bca8ecca651bdbac5099836`.
 기존 연구/Repair 사용법은 [원본 README](docs/UPSTREAM.md)에 보존했습니다.
 
+불일치하는 다중 시점 마스크를 다루는 **공식 MaRO-GS 학습 경로**도 사용할 수 있습니다.
+`images/object_1`, `mask/object_1`, `object/object_1` 폴더를 연결하는
+`scripts/train_maro.py`의 실행 순서와 폐쇄망 사용법은 [MaRO-GS 문서](docs/MARO_GS.md)에 있습니다.
+DUSt3R 포즈·depth를 재사용하므로 COLMAP을 추가 실행하지 않습니다.
+
 프레임별 RGB·MASt3R Z depth·내부 파라미터만으로 카메라가 후퇴한 영상을 만들려면
 [독립 프레임 거리 변환](docs/DISTANCE_WARP.md)을 참고하십시오. 객체 마스크나 3DGS 학습 없이
 원본 해상도의 RGB와 미관측 영역을 구분하는 유효 마스크를 저장합니다.
