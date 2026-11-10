@@ -17,7 +17,7 @@ from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from scripts.truck_render_utils import (alpha_bounds, azimuths, elevation_directory,
+from scripts.truck_render_utils import (alpha_bounds, azimuths,
     infer_orbit_frame, orbit_camera, rgba_from_accumulated, safe_radius)
 
 
@@ -27,7 +27,8 @@ def parser():
     p.add_argument('--ply', type=Path, help='Override model PLY; default latest saved point_cloud/iteration_N/point_cloud.ply')
     p.add_argument('--iteration', type=int, help='Specific saved iteration, default latest')
     p.add_argument('--camera-json', type=Path, help='DUSt3R camera JSON override; defaults to copied model metadata/cameras.json')
-    p.add_argument('--output', type=Path, default=Path('renders'))
+    p.add_argument('--output', type=Path, default=Path('renders'),
+                   help='Single output folder; PNGs numbered 1.png, 2.png, ... across all elevations')
     p.add_argument('--elevations', type=float, nargs='+', help='Degrees above horizontal, 0..90; default inferred capture elevation')
     p.add_argument('--frames-per-elevation', type=int, default=120)
     p.add_argument('--start-azimuth', type=float, default=0, help='Degrees relative to first capture camera radial direction')
@@ -145,8 +146,8 @@ def main(argv=None):
         elevations = args.elevations if args.elevations is not None else [capture_elevation]
         if any(not np.isfinite(e) or not 0 <= e <= 90 for e in elevations):
             raise ValueError('Elevations must be finite degrees in [0,90]; use --up-vector for an inverted inferred frame')
-        if len({elevation_directory(e) for e in elevations}) != len(elevations):
-            raise ValueError('Duplicate elevations/output directories')
+        if len(set(elevations)) != len(elevations):
+            raise ValueError('Duplicate elevations')
         fov_y = math.radians(args.fov_y) if args.fov_y is not None else float(np.median([2 * np.arctan(c['height'] / (2 * c['fy'])) for c in cameras]))
         if not 0 < fov_y < math.pi:
             raise ValueError('Invalid vertical field of view')
@@ -158,7 +159,8 @@ def main(argv=None):
             raise ValueError(f'Orbit radius must be >= {minimum_radius:.5g} to fit Gaussian bounds')
         base_radius = radius
         radius = retreat_radius(base_radius, args.distance_factor)
-        planned_paths = [args.output / elevation_directory(e) / f'{i:04d}.png' for e in elevations for i in range(1, args.frames_per_elevation + 1)]
+        planned_paths = [args.output / f'{i}.png'
+                         for i in range(1, len(elevations) * args.frames_per_elevation + 1)]
         validate_output_paths(args.output, planned_paths, args.overwrite)
         import torch
         if not torch.cuda.is_available():
@@ -180,6 +182,7 @@ def main(argv=None):
             elevations=elevations, frames_per_elevation=args.frames_per_elevation,
             width=args.width, height=args.height, radius=radius, fov_y_degrees=math.degrees(fov_y),
             base_radius=base_radius, distance_factor=args.distance_factor,
+            filenames='1.png onward, elevation order then azimuth order; see views.csv for angles',
             alpha='native accumulated opacity; straight RGBA, RGB unpremultiplied from black background',
             top_view='At 90 degrees azimuth changes roll, not camera position')
         (args.output / 'render_config.json').write_text(json.dumps(config, indent=2) + '\n')
@@ -187,9 +190,7 @@ def main(argv=None):
         with (args.output / 'views.csv').open('w', newline='') as stream:
             writer = csv.DictWriter(stream, fieldnames=fields)
             writer.writeheader()
-            for elevation in elevations:
-                folder = args.output / elevation_directory(elevation)
-                folder.mkdir(parents=True, exist_ok=True)
+            for elevation_index, elevation in enumerate(elevations):
                 for index, azimuth in enumerate(azimuths(args.start_azimuth, args.frames_per_elevation), 1):
                     c2w = orbit_camera(center, axis_x, axis_y, up, radius, azimuth, elevation)
                     view = torch.tensor(np.linalg.inv(c2w).T.copy(), dtype=torch.float32, device='cuda')
@@ -204,7 +205,7 @@ def main(argv=None):
                     rgba = rgba_from_accumulated(rgb, alpha)
                     if not np.any(rgba[..., 3] == 0):
                         raise ValueError('No fully transparent background pixels; inspect model/masks')
-                    target = folder / f'{index:04d}.png'
+                    target = planned_paths[elevation_index * args.frames_per_elevation + index - 1]
                     Image.fromarray(rgba, 'RGBA').save(target)
                     # Reopen the actual artifact; a tensor shape alone does not validate PNG output.
                     with Image.open(target) as check:

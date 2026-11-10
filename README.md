@@ -224,12 +224,15 @@ python scripts/render_truck.py \
 
 ```text
 renders/
-  elev_040/0001.png ... 0120.png
-  elev_060/0001.png ... 0120.png
-  elev_090/0001.png ... 0120.png
+  1.png ... 120.png     # 첫 번째 고도각
+  121.png ... 240.png   # 두 번째 고도각
+  241.png ... 360.png   # 세 번째 고도각
   views.csv          # 파일별 방위각·고도각·카메라 위치·해상도·alpha bbox
   render_config.json # 사용 모델·상방축·중심·반경 등
 ```
+
+이미지는 고도각별 하위 폴더 없이 한 폴더에 연속 번호로 저장합니다.
+번호는 `--elevations`에 지정한 순서대로 이어지고, 각 이미지의 각도는 `views.csv`에 기록합니다.
 
 모델 디렉터리의 마지막 저장 iteration을 숫자 기준으로 선택하며 `--iteration 10000` 또는 `--ply /local/model.ply`로 바꿀 수 있습니다.
 출력 장수·각도·해상도를 바꿀 때는 이 명령만 실행하고 새 `--output`을 지정합니다. 소스 영상·마스크가 없어도 됩니다.

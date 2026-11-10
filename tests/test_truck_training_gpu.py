@@ -142,6 +142,7 @@ class TruckTrainingGpuIntegration(unittest.TestCase):
             with (renders / 'views.csv').open(newline='') as stream:
                 rows = list(csv.DictReader(stream))
             self.assertEqual(len(rows), 6)
+            self.assertEqual([row['file'] for row in rows], [f'{i}.png' for i in range(1,7)])
             self.assertEqual({float(row['elevation_deg']) for row in rows}, {40., 60., 90.})
             for row in rows:
                 with Image.open(renders / row['file']) as image:

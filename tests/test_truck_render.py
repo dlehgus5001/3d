@@ -27,9 +27,8 @@ class TruckRenderTests(unittest.TestCase):
     def test_overwrite_cannot_mix_stale_frames_into_new_sequence(self):
         with tempfile.TemporaryDirectory() as temporary:
             output = Path(temporary)
-            first = output / 'elev_040/0001.png'
-            second = output / 'elev_040/0002.png'
-            first.parent.mkdir()
+            first = output / '1.png'
+            second = output / '2.png'
             first.touch()
             second.touch()
             with self.assertRaisesRegex(ValueError, 'outside this sequence'):

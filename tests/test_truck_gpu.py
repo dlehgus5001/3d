@@ -89,6 +89,7 @@ class NativeOpacityGpuSmoke(unittest.TestCase):
             with (output / 'views.csv').open(newline='') as stream:
                 rows = list(csv.DictReader(stream))
             self.assertEqual(len(rows), 6)
+            self.assertEqual([row['file'] for row in rows], [f'{i}.png' for i in range(1,7)])
             for row in rows:
                 path = output / row['file']
                 with Image.open(path) as image:

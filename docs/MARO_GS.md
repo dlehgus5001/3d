@@ -113,6 +113,10 @@ python scripts/render_truck.py \
   --output renders/maro_object_1 --frames-per-elevation 120
 ```
 
+출력은 한 폴더에 `1.png`, `2.png`, ... 순서로 저장합니다.
+여러 고도각에서도 번호가 이어지므로 7개 각도 × 120장이면 `1.png`부터 `840.png`입니다.
+각 번호에 해당하는 고도각·방위각은 `views.csv`에 기록합니다.
+
 RGBA의 alpha는 학습된 Gaussian의 불투명도입니다. 잘못 남은 배경 점까지 자동으로
 제거하는 후처리 마스크는 아닙니다. 실제 결과를 보고 카메라·마스크 품질을 확인하세요.
 `object_2`는 위 명령의 모든 `object_1`을 `object_2`로 바꿔 별도로 실행합니다.
